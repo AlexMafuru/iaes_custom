@@ -1,76 +1,86 @@
 (function () {
-	function patch_filters() {
-		if (!window.frappe || !frappe.ui || !frappe.ui.Filter) return;
+	function add_id_operators() {
+		const rows = document.querySelectorAll('[data-fieldname], .filter-row, .filter-field');
 
-		const Filter = frappe.ui.Filter;
-		if (Filter.prototype._id_before_after_patched) return;
-		Filter.prototype._id_before_after_patched = true;
+		rows.forEach((row) => {
+			const selects = row.querySelectorAll('select');
+			if (selects.length < 2) return;
 
-		const original_get_operators = Filter.prototype.get_operators;
-		const original_make = Filter.prototype.make;
-		const original_set_field = Filter.prototype.set_field;
+			const fieldSelect = selects[0];
+			const operatorSelect = selects[1];
 
-		function is_name_field(filter, df) {
-			return (
-				df?.fieldname === "name" ||
-				filter?.fieldname === "name" ||
-				filter?.df?.fieldname === "name" ||
-				filter?.field?.df?.fieldname === "name"
+			const fieldValue = (fieldSelect.value || "").toLowerCase();
+			const fieldText =
+				fieldSelect.options[fieldSelect.selectedIndex]?.text?.toLowerCase() || "";
+
+			const isIdField =
+				fieldValue === "name" ||
+				fieldValue === "id" ||
+				fieldText === "id" ||
+				fieldText === "name";
+
+			if (!isIdField) return;
+
+			const hasBefore = Array.from(operatorSelect.options).some(
+				(opt) => opt.value === "<"
 			);
-		}
+			const hasAfter = Array.from(operatorSelect.options).some(
+				(opt) => opt.value === ">"
+			);
 
-		function relabel_operator_dropdown(filter) {
-			if (!is_name_field(filter)) return;
-
-			const $select =
-				filter?.operator_input?.$input ||
-				filter?.condition?.$input;
-
-			if (!$select || !$select.length) return;
-
-			$select.find('option[value="<"]').text("Before");
-			$select.find('option[value=">"]').text("After");
-		}
-
-		Filter.prototype.get_operators = function (df) {
-			let operators = original_get_operators
-				? original_get_operators.call(this, df)
-				: [];
-
-			if (is_name_field(this, df)) {
-				if (!operators.includes("<")) operators.push("<");
-				if (!operators.includes(">")) operators.push(">");
+			if (!hasBefore) {
+				const opt = document.createElement("option");
+				opt.value = "<";
+				opt.text = "Before";
+				operatorSelect.appendChild(opt);
 			}
 
-			return operators;
-		};
+			if (!hasAfter) {
+				const opt = document.createElement("option");
+				opt.value = ">";
+				opt.text = "After";
+				operatorSelect.appendChild(opt);
+			}
+		});
+	}
 
-		Filter.prototype.make = function () {
-			const result = original_make
-				? original_make.apply(this, arguments)
-				: undefined;
+	function relabel_existing_options() {
+		document.querySelectorAll("select").forEach((select) => {
+			Array.from(select.options).forEach((opt) => {
+				if (opt.value === "<") opt.text = "Before";
+				if (opt.value === ">") opt.text = "After";
+			});
+		});
+	}
 
-			setTimeout(() => relabel_operator_dropdown(this), 100);
-			return result;
-		};
+	function patch() {
+		add_id_operators();
+		relabel_existing_options();
+	}
 
-		Filter.prototype.set_field = function () {
-			const result = original_set_field
-				? original_set_field.apply(this, arguments)
-				: undefined;
+	const observer = new MutationObserver(() => {
+		patch();
+	});
 
-			setTimeout(() => relabel_operator_dropdown(this), 100);
-			return result;
-		};
+	function start() {
+		patch();
+		observer.observe(document.body, {
+			childList: true,
+			subtree: true,
+		});
+
+		document.body.addEventListener("click", function () {
+			setTimeout(patch, 150);
+		});
+
+		document.body.addEventListener("change", function () {
+			setTimeout(patch, 150);
+		});
 	}
 
 	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", patch_filters);
+		document.addEventListener("DOMContentLoaded", start);
 	} else {
-		patch_filters();
-	}
-
-	if (window.frappe && frappe.after_ajax) {
-		frappe.after_ajax(() => patch_filters());
+		start();
 	}
 })();
