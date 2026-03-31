@@ -1,69 +1,73 @@
-(function() {
-    frappe.provide("iaes_custom.id_filters");
+(function () {
+	function add_id_filter_buttons(listview) {
+		if (!listview || !listview.page) return;
+		if (listview.page.__id_before_after_added) return;
+		listview.page.__id_before_after_added = true;
 
-    iaes_custom.id_filters.add_buttons = function (listview) {
-        if (!listview || !listview.page || listview.page.__id_before_after_added) return;
-        listview.page.__id_before_after_added = true;
+		listview.page.add_inner_button(__("ID Before"), () => {
+			const d = new frappe.ui.Dialog({
+				title: __("Filter by ID Before"),
+				fields: [
+					{
+						label: __("Document ID"),
+						fieldname: "doc_id",
+						fieldtype: "Data",
+						reqd: 1,
+					},
+				],
+				primary_action_label: __("Apply"),
+				primary_action(values) {
+					listview.filter_area.add([
+						[listview.doctype, "name", "<", values.doc_id],
+					]);
+					d.hide();
+				},
+			});
+			d.show();
+		});
 
-        // Add "ID Before" to the Actions menu
-        listview.page.add_action_item(__("ID Before"), () => {
-            const d = new frappe.ui.Dialog({
-                title: __("Filter by ID Before"),
-                fields: [{
-                    label: __("Document ID"),
-                    fieldname: "doc_id",
-                    fieldtype: "Data",
-                    reqd: 1,
-                    description: __("Example: PINV-2026-0050")
-                }],
-                primary_action_label: __("Apply Filter"),
-                primary_action(values) {
-                    listview.filter_area.add([
-                        [listview.doctype, "name", "<", values.doc_id],
-                    ]);
-                    d.hide();
-                }
-            });
-            d.show();
-        });
+		listview.page.add_inner_button(__("ID After"), () => {
+			const d = new frappe.ui.Dialog({
+				title: __("Filter by ID After"),
+				fields: [
+					{
+						label: __("Document ID"),
+						fieldname: "doc_id",
+						fieldtype: "Data",
+						reqd: 1,
+					},
+				],
+				primary_action_label: __("Apply"),
+				primary_action(values) {
+					listview.filter_area.add([
+						[listview.doctype, "name", ">", values.doc_id],
+					]);
+					d.hide();
+				},
+			});
+			d.show();
+		});
+	}
 
-        // Add "ID After" to the Actions menu
-        listview.page.add_action_item(__("ID After"), () => {
-            const d = new frappe.ui.Dialog({
-                title: __("Filter by ID After"),
-                fields: [{
-                    label: __("Document ID"),
-                    fieldname: "doc_id",
-                    fieldtype: "Data",
-                    reqd: 1,
-                    description: __("Example: PINV-2026-0010")
-                }],
-                primary_action_label: __("Apply Filter"),
-                primary_action(values) {
-                    listview.filter_area.add([
-                        [listview.doctype, "name", ">", values.doc_id],
-                    ]);
-                    d.hide();
-                }
-            });
-            d.show();
-        });
-    };
+	function patch_listview() {
+		if (!frappe.views || !frappe.views.ListView) return;
 
-    // Hook into ListView to add buttons on load
-    $(document).on("app_ready", function () {
-        if (!frappe.views || !frappe.views.ListView) return;
+		const proto = frappe.views.ListView.prototype;
+		if (proto._iaes_id_buttons_patched) return;
+		proto._iaes_id_buttons_patched = true;
 
-        const original_render = frappe.views.ListView.prototype.render;
-        if (frappe.views.ListView.prototype._iaes_id_filter_patched) return;
-        frappe.views.ListView.prototype._iaes_id_filter_patched = true;
+		const original_show = proto.show;
 
-        frappe.views.ListView.prototype.render = function () {
-            const result = original_render.apply(this, arguments);
-            setTimeout(() => {
-                iaes_custom.id_filters.add_buttons(this);
-            }, 500);
-            return result;
-        };
-    });
+		proto.show = function () {
+			const result = original_show.apply(this, arguments);
+			setTimeout(() => add_id_filter_buttons(this), 500);
+			return result;
+		};
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", patch_listview);
+	} else {
+		patch_listview();
+	}
 })();
