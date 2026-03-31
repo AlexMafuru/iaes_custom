@@ -1,65 +1,76 @@
-frappe.ready(function () {
-    if (!frappe.ui || !frappe.ui.Filter) return;
+(function () {
+	function patch_filters() {
+		if (!window.frappe || !frappe.ui || !frappe.ui.Filter) return;
 
-    const Filter = frappe.ui.Filter;
+		const Filter = frappe.ui.Filter;
+		if (Filter.prototype._id_before_after_patched) return;
+		Filter.prototype._id_before_after_patched = true;
 
-    if (Filter.prototype._before_after_patched) return;
-    Filter.prototype._before_after_patched = true;
+		const original_get_operators = Filter.prototype.get_operators;
+		const original_make = Filter.prototype.make;
+		const original_set_field = Filter.prototype.set_field;
 
-    const original_get_operators = Filter.prototype.get_operators;
-    const original_make = Filter.prototype.make;
-    const original_set_field = Filter.prototype.set_field;
+		function is_name_field(filter, df) {
+			return (
+				df?.fieldname === "name" ||
+				filter?.fieldname === "name" ||
+				filter?.df?.fieldname === "name" ||
+				filter?.field?.df?.fieldname === "name"
+			);
+		}
 
-    function is_name_field(filter) {
-        try {
-            return (
-                filter?.fieldname === "name" ||
-                filter?.df?.fieldname === "name" ||
-                filter?.field?.df?.fieldname === "name"
-            );
-        } catch (e) {
-            return false;
-        }
-    }
+		function relabel_operator_dropdown(filter) {
+			if (!is_name_field(filter)) return;
 
-    function relabel_operators(filter) {
-        if (!is_name_field(filter)) return;
+			const $select =
+				filter?.operator_input?.$input ||
+				filter?.condition?.$input;
 
-        const $select =
-            filter?.operator_input?.$input ||
-            filter?.condition?.$input ||
-            null;
+			if (!$select || !$select.length) return;
 
-        if (!$select || !$select.length) return;
+			$select.find('option[value="<"]').text("Before");
+			$select.find('option[value=">"]').text("After");
+		}
 
-        $select.find('option[value="<"]').text("Before");
-        $select.find('option[value=">"]').text("After");
-    }
+		Filter.prototype.get_operators = function (df) {
+			let operators = original_get_operators
+				? original_get_operators.call(this, df)
+				: [];
 
-    Filter.prototype.get_operators = function (df) {
-        let operators = original_get_operators
-            ? original_get_operators.call(this, df)
-            : [];
+			if (is_name_field(this, df)) {
+				if (!operators.includes("<")) operators.push("<");
+				if (!operators.includes(">")) operators.push(">");
+			}
 
-        if (df && df.fieldname === "name") {
-            if (!operators.includes("<")) operators.push("<");
-            if (!operators.includes(">")) operators.push(">");
-        }
+			return operators;
+		};
 
-        return operators;
-    };
+		Filter.prototype.make = function () {
+			const result = original_make
+				? original_make.apply(this, arguments)
+				: undefined;
 
-    Filter.prototype.make = function () {
-        const result = original_make ? original_make.apply(this, arguments) : undefined;
-        setTimeout(() => relabel_operators(this), 100);
-        return result;
-    };
+			setTimeout(() => relabel_operator_dropdown(this), 100);
+			return result;
+		};
 
-    Filter.prototype.set_field = function () {
-        const result = original_set_field
-            ? original_set_field.apply(this, arguments)
-            : undefined;
-        setTimeout(() => relabel_operators(this), 100);
-        return result;
-    };
-});
+		Filter.prototype.set_field = function () {
+			const result = original_set_field
+				? original_set_field.apply(this, arguments)
+				: undefined;
+
+			setTimeout(() => relabel_operator_dropdown(this), 100);
+			return result;
+		};
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", patch_filters);
+	} else {
+		patch_filters();
+	}
+
+	if (window.frappe && frappe.after_ajax) {
+		frappe.after_ajax(() => patch_filters());
+	}
+})();
