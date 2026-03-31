@@ -1,60 +1,137 @@
 (function () {
-    // The core function to inject our grouped menu
-    const inject_id_filters = (listview) => {
-        // Guard clause: ensure page exists and we haven't already added buttons
-        if (!listview || !listview.page || listview.page.__id_filters_added) return;
-        
-        // 1. Add "Before" to the "ID Filters" group
-        listview.page.add_inner_button(__("Before"), () => {
-            let d = new frappe.ui.Dialog({
-                title: __("Filter: ID Before"),
-                fields: [{ 
-                    label: __("Document ID"), 
-                    fieldname: "doc_id", 
-                    fieldtype: "Data", 
-                    reqd: 1 
-                }],
-                primary_action_label: __("Apply"),
-                primary_action(values) {
-                    listview.filter_area.add([[listview.doctype, "name", "<", values.doc_id]]);
-                    d.hide();
-                }
-            });
-            d.show();
-        }, __("ID Filters"));
+	function get_current_listview() {
+		try {
+			if (window.cur_list && cur_list.doctype && cur_list.page) {
+				return cur_list;
+			}
+		} catch (e) {}
+		return null;
+	}
 
-        // 2. Add "After" to the same "ID Filters" group
-        listview.page.add_inner_button(__("After"), () => {
-            let d = new frappe.ui.Dialog({
-                title: __("Filter: ID After"),
-                fields: [{ 
-                    label: __("Document ID"), 
-                    fieldname: "doc_id", 
-                    fieldtype: "Data", 
-                    reqd: 1 
-                }],
-                primary_action_label: __("Apply"),
-                primary_action(values) {
-                    listview.filter_area.add([[listview.doctype, "name", ">", values.doc_id]]);
-                    d.hide();
-                }
-            });
-            d.show();
-        }, __("ID Filters"));
+	function ensure_id_buttons(listview) {
+		if (!listview || !listview.doctype || !listview.page) return;
 
-        // Mark as added so we don't duplicate on every refresh
-        listview.page.__id_filters_added = true;
-    };
+		const doctype = listview.doctype;
+		const beforeId = `iaes-id-before-btn-${doctype.replace(/\s+/g, "-")}`;
+		const afterId = `iaes-id-after-btn-${doctype.replace(/\s+/g, "-")}`;
 
-    // GLOBAL HOOK: We patch the standard ListView header refresh
-    // This ensures that whenever ANY list is loaded or filtered, our buttons are checked
-    $(document).on("app_ready", function () {
-        if (frappe.views.ListView) {
-            const original_refresh = frappe.views.ListView.prototype.refresh_header;
-            frappe.views.ListView.prototype.refresh_header = function () {
-                original_refresh.apply(this, arguments);
-                inject_id_filters(this);
-            };
-        }
-    });
+		if (document.getElementById(beforeId) || document.getElementById(afterId)) {
+			return;
+		}
+
+		let target = null;
+
+		try {
+			if (listview.page.btn_primary && listview.page.btn_primary.parent && listview.page.btn_primary.parent().length) {
+				target = listview.page.btn_primary.parent();
+			}
+		} catch (e) {}
+
+		if (!target || !target.length) {
+			try {
+				const pageActions = listview.page.wrapper.find(".page-actions");
+				if (pageActions && pageActions.length) {
+					target = pageActions;
+				}
+			} catch (e) {}
+		}
+
+		if (!target || !target.length) return;
+
+		const beforeBtn = $(`
+			<button class="btn btn-default btn-sm ellipsis" id="${beforeId}" style="margin-right:8px;">
+				ID Before
+			</button>
+		`);
+
+		const afterBtn = $(`
+			<button class="btn btn-default btn-sm ellipsis" id="${afterId}" style="margin-right:8px;">
+				ID After
+			</button>
+		`);
+
+		beforeBtn.on("click", function () {
+			const d = new frappe.ui.Dialog({
+				title: __("Filter ID Before"),
+				fields: [
+					{
+						label: __("Document ID"),
+						fieldname: "doc_id",
+						fieldtype: "Data",
+						reqd: 1,
+						description: __("Applies filter: ID < entered value")
+					}
+				],
+				primary_action_label: __("Apply"),
+				primary_action(values) {
+					listview.filter_area.add([
+						[listview.doctype, "name", "<", values.doc_id]
+					]);
+					d.hide();
+				}
+			});
+			d.show();
+		});
+
+		afterBtn.on("click", function () {
+			const d = new frappe.ui.Dialog({
+				title: __("Filter ID After"),
+				fields: [
+					{
+						label: __("Document ID"),
+						fieldname: "doc_id",
+						fieldtype: "Data",
+						reqd: 1,
+						description: __("Applies filter: ID > entered value")
+					}
+				],
+				primary_action_label: __("Apply"),
+				primary_action(values) {
+					listview.filter_area.add([
+						[listview.doctype, "name", ">", values.doc_id]
+					]);
+					d.hide();
+				}
+			});
+			d.show();
+		});
+
+		target.before(afterBtn);
+		target.before(beforeBtn);
+	}
+
+	function try_attach_buttons() {
+		const listview = get_current_listview();
+		if (!listview) return;
+
+		ensure_id_buttons(listview);
+	}
+
+	function start_global_id_buttons() {
+		try_attach_buttons();
+
+		let lastRoute = frappe.get_route_str ? frappe.get_route_str() : "";
+		setInterval(() => {
+			const currentRoute = frappe.get_route_str ? frappe.get_route_str() : "";
+			if (currentRoute !== lastRoute) {
+				lastRoute = currentRoute;
+				setTimeout(try_attach_buttons, 400);
+				setTimeout(try_attach_buttons, 1000);
+			} else {
+				try_attach_buttons();
+			}
+		}, 1200);
+
+		if (frappe.after_ajax) {
+			frappe.after_ajax(() => {
+				setTimeout(try_attach_buttons, 300);
+			});
+		}
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", start_global_id_buttons);
+	} else {
+		start_global_id_buttons();
+	}
 })();
