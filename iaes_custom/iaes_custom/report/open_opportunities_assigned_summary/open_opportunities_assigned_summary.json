@@ -19,8 +19,14 @@
   "report_name": "Open Opportunities Assigned Summary",
   "report_type": "Script Report",
   "roles": [
-    { "role": "Sales User" },
-    { "role": "Sales Manager" },
-    { "role": "System Manager" }
+    {
+      "role": "Sales User"
+    },
+    {
+      "role": "Sales Manager"
+    },
+    {
+      "role": "System Manager"
+    }
   ]
 }
