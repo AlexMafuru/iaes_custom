@@ -1,8 +1,10 @@
 import frappe
 from frappe import _
+from datetime import timedelta
 
 
 def execute(filters=None):
+
     columns = [
         {
             "label": _("Assigned To"),
@@ -23,6 +25,12 @@ def execute(filters=None):
             "fieldtype": "Int",
             "width": 100,
         },
+        {
+            "label": _("Closing This Week"),
+            "fieldname": "closing_week",
+            "fieldtype": "Int",
+            "width": 140,
+        },
     ]
 
     data = frappe.db.sql(
@@ -38,7 +46,14 @@ def execute(filters=None):
                      AND o.deadline_date < CURDATE()
                     THEN o.name
                 END
-            ) AS expired_count
+            ) AS expired_count,
+
+            COUNT(
+                DISTINCT CASE
+                    WHEN o.deadline_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+                    THEN o.name
+                END
+            ) AS closing_week
 
         FROM `tabUser` u
         LEFT JOIN `tabOpportunity` o
