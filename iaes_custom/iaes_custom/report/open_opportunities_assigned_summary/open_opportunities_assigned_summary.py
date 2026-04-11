@@ -34,8 +34,8 @@ def execute(filters=None):
 
             COUNT(
                 DISTINCT CASE
-                    WHEN o.expected_closing IS NOT NULL
-                     AND o.expected_closing < CURDATE()
+                    WHEN o.deadline_date IS NOT NULL
+                     AND o.deadline_date < CURDATE()
                     THEN o.name
                 END
             ) AS expired_count
