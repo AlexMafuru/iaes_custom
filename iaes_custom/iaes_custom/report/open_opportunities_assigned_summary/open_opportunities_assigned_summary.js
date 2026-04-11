@@ -1,5 +1,42 @@
 frappe.query_reports["Open Opportunities Assigned Summary"] = {
     formatter: function (value, row, column, data, default_formatter) {
-        return default_formatter(value, row, column, data);
+        value = default_formatter(value, row, column, data);
+
+        if (!data) return value;
+
+        if (column.fieldname === "open_count" && cint(data.open_count) > 0) {
+            const filters = [
+                ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
+                ["Opportunity", "_assign", "like", `%${data.assigned_user}%`]
+            ];
+            const encoded = encodeURIComponent(JSON.stringify(filters));
+            return `<a href="/app/opportunity/view/list?filters=${encoded}" style="font-weight:bold;">${data.open_count}</a>`;
+        }
+
+        if (column.fieldname === "expired_count" && cint(data.expired_count) > 0) {
+            const filters = [
+                ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
+                ["Opportunity", "_assign", "like", `%${data.assigned_user}%`],
+                ["Opportunity", "deadline_date", "<", frappe.datetime.get_today()]
+            ];
+            const encoded = encodeURIComponent(JSON.stringify(filters));
+            return `<a href="/app/opportunity/view/list?filters=${encoded}" style="font-weight:bold;">${data.expired_count}</a>`;
+        }
+
+        if (column.fieldname === "closing_week" && cint(data.closing_week) > 0) {
+            const today = frappe.datetime.get_today();
+            const next_week = frappe.datetime.add_days(today, 7);
+
+            const filters = [
+                ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
+                ["Opportunity", "_assign", "like", `%${data.assigned_user}%`],
+                ["Opportunity", "deadline_date", ">=", today],
+                ["Opportunity", "deadline_date", "<=", next_week]
+            ];
+            const encoded = encodeURIComponent(JSON.stringify(filters));
+            return `<a href="/app/opportunity/view/list?filters=${encoded}" style="font-weight:bold;">${data.closing_week}</a>`;
+        }
+
+        return value;
     }
 };
