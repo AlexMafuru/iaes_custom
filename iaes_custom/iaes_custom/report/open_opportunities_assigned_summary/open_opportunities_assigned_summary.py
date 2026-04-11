@@ -106,18 +106,18 @@ def execute(filters=None):
 
         open_filters = [
             ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
+            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
         ]
 
         expired_filters = [
             ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
+            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
             ["Opportunity", "deadline_date", "<", current_date],
         ]
 
         closing_week_filters = [
             ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
+            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
             ["Opportunity", "deadline_date", ">=", current_date],
             ["Opportunity", "deadline_date", "<=", week_end],
         ]
