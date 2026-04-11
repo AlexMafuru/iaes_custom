@@ -17,15 +17,15 @@ frappe.query_reports["Open Opportunities Assigned Summary"] = {
 
     open_opportunities: function (assigned_user) {
         frappe.set_route("List", "Opportunity", {
-            status: ["in", ["Open", "In preparation", "In Preparation"]],
-            _assign: ["like", `%${assigned_user}%`]
+            _assign: ["like", `%${assigned_user}%`],
+            status: "Open"
         });
     },
 
     open_expired_opportunities: function (assigned_user) {
         frappe.set_route("List", "Opportunity", {
-            status: ["in", ["Open", "In preparation", "In Preparation"]],
             _assign: ["like", `%${assigned_user}%`],
+            status: "Open",
             expected_closing: ["<", frappe.datetime.get_today()]
         });
     }
