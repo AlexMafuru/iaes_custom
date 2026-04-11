@@ -1,10 +1,7 @@
-import json
-
 import frappe
 from frappe import _
-from frappe.utils import nowdate
 
-OPEN_STATUSES = ["Open", "In preparation", "In Preparation"]
+OPEN_STATUSES = ("Open", "In preparation", "In Preparation")
 
 
 def execute(filters=None):
@@ -28,21 +25,9 @@ def execute(filters=None):
             "fieldtype": "Int",
             "width": 100,
         },
-        {
-            "label": _("Open Filters"),
-            "fieldname": "open_filters",
-            "fieldtype": "Data",
-            "hidden": 1,
-        },
-        {
-            "label": _("Expired Filters"),
-            "fieldname": "expired_filters",
-            "fieldtype": "Data",
-            "hidden": 1,
-        },
     ]
 
-    rows = frappe.db.sql(
+    data = frappe.db.sql(
         """
         SELECT
             u.name AS assigned_user,
@@ -50,6 +35,7 @@ def execute(filters=None):
             COUNT(
                 DISTINCT CASE
                     WHEN o.expected_closing IS NOT NULL
+                     AND o.expected_closing != ''
                      AND DATE(o.expected_closing) < CURDATE()
                     THEN o.name
                 END
@@ -68,30 +54,5 @@ def execute(filters=None):
         """,
         as_dict=True,
     )
-
-    data = []
-    for row in rows:
-        assigned_user = row.assigned_user
-
-        open_filters = [
-            ["Opportunity", "status", "in", OPEN_STATUSES],
-            ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
-        ]
-
-        expired_filters = [
-            ["Opportunity", "status", "in", OPEN_STATUSES],
-            ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
-            ["Opportunity", "expected_closing", "<", nowdate()],
-        ]
-
-        data.append(
-            {
-                "assigned_user": assigned_user,
-                "open_count": row.open_count,
-                "expired_count": row.expired_count,
-                "open_filters": json.dumps(open_filters),
-                "expired_filters": json.dumps(expired_filters),
-            }
-        )
 
     return columns, data
