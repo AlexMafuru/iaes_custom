@@ -16,17 +16,23 @@ frappe.query_reports["Open Opportunities Assigned Summary"] = {
     },
 
     open_opportunities: function (assigned_user) {
-        frappe.set_route("List", "Opportunity", {
-            _assign: ["like", `%${assigned_user}%`],
-            status: "Open"
-        });
+        const filters = [
+            ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
+            ["Opportunity", "_assign", "like", `%${assigned_user}%`]
+        ];
+
+        const encoded = encodeURIComponent(JSON.stringify(filters));
+        window.location.href = `/app/opportunity/view/list?filters=${encoded}`;
     },
 
     open_expired_opportunities: function (assigned_user) {
-        frappe.set_route("List", "Opportunity", {
-            _assign: ["like", `%${assigned_user}%`],
-            status: "Open",
-            expected_closing: ["<", frappe.datetime.get_today()]
-        });
+        const filters = [
+            ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
+            ["Opportunity", "_assign", "like", `%${assigned_user}%`],
+            ["Opportunity", "expected_closing", "<", frappe.datetime.get_today()]
+        ];
+
+        const encoded = encodeURIComponent(JSON.stringify(filters));
+        window.location.href = `/app/opportunity/view/list?filters=${encoded}`;
     }
 };
