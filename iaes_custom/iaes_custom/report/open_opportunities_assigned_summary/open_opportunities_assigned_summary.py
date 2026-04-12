@@ -7,15 +7,19 @@ from frappe.utils import today, add_days
 OPEN_STATUSES = ["Open", "In preparation"]
 
 def make_ui_url(user_email, extra_filters=None):
-    filters = [
-        ["Opportunity", "_assign", "like", f"%{user_email}%"],
-        ["Opportunity", "status", "in", OPEN_STATUSES],
+    """
+    Build Frappe list-view URL filters in list-route format:
+    [fieldname, operator, value]
+    """
+    route_filters = [
+        ["_assign", "like", f"%{user_email}%"],
+        ["status", "in", OPEN_STATUSES],
     ]
 
     if extra_filters:
-        filters.extend(extra_filters)
+        route_filters.extend(extra_filters)
 
-    return "/app/opportunity/view/list?filters=" + urllib.parse.quote(json.dumps(filters))
+    return "/app/opportunity/view/list?filters=" + urllib.parse.quote(json.dumps(route_filters))
 
 def execute(filters=None):
     columns = [
@@ -86,13 +90,19 @@ def execute(filters=None):
         data.append({
             "assigned_user": user,
             "open_count": get_html_link(row.open_count),
+
             "expired_count": get_html_link(
                 row.expired_count,
-                [["Opportunity", "deadline_date", "<", current_date]]
+                [
+                    ["deadline_date", "<", current_date]
+                ]
             ),
+
             "closing_week": get_html_link(
                 row.closing_week,
-                [["Opportunity", "deadline_date", "between", [current_date, week_end]]]
+                [
+                    ["deadline_date", "between", [current_date, week_end]]
+                ]
             ),
         })
 
