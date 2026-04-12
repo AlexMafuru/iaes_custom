@@ -5,12 +5,55 @@ import frappe
 from frappe import _
 from frappe.utils import today, add_days
 
+
 OPEN_STATUSES = ["Open", "In preparation", "In Preparation"]
 
 
 def make_list_url(filters):
     encoded = urllib.parse.quote(json.dumps(filters))
     return f"/app/opportunity/view/list?filters={encoded}"
+
+
+def make_link(label, url):
+    return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{label}</a>'
+
+
+def get_names_for_bucket(assigned_user, bucket, current_date, week_end):
+    conditions = [
+        "docstatus < 2",
+        "status in %(statuses)s",
+        "coalesce(_assign, '') like %(assign_like)s",
+    ]
+
+    values = {
+        "statuses": tuple(OPEN_STATUSES),
+        "assign_like": f'%"{assigned_user}"%',
+        "current_date": current_date,
+        "week_end": week_end,
+    }
+
+    if bucket == "expired":
+        conditions.append("deadline_date is not null")
+        conditions.append("deadline_date < %(current_date)s")
+    elif bucket == "closing_week":
+        conditions.append("deadline_date is not null")
+        conditions.append("deadline_date >= %(current_date)s")
+        conditions.append("deadline_date <= %(week_end)s")
+
+    where_clause = " AND ".join(conditions)
+
+    rows = frappe.db.sql(
+        f"""
+        SELECT name
+        FROM `tabOpportunity`
+        WHERE {where_clause}
+        ORDER BY name
+        """,
+        values,
+        as_dict=True,
+    )
+
+    return [r.name for r in rows]
 
 
 def execute(filters=None):
@@ -81,33 +124,27 @@ def execute(filters=None):
 
     for row in rows:
         user = row.assigned_user
-        assign_pattern = f'%"{user}"%'
 
-        open_filters = [
-            ["Opportunity", "status", "in", OPEN_STATUSES],
-            ["Opportunity", "_assign", "like", assign_pattern],
-        ]
+        open_names = get_names_for_bucket(user, "open", current_date, week_end)
+        expired_names = get_names_for_bucket(user, "expired", current_date, week_end)
+        week_names = get_names_for_bucket(user, "closing_week", current_date, week_end)
 
-        expired_filters = open_filters + [
-            ["Opportunity", "deadline_date", "<", current_date]
-        ]
+        def build_url(names):
+            if not names:
+                return None
+            return make_list_url([
+                ["Opportunity", "name", "in", names]
+            ])
 
-        week_filters = open_filters + [
-            ["Opportunity", "deadline_date", ">=", current_date],
-            ["Opportunity", "deadline_date", "<=", week_end],
-        ]
-
-        def get_link(count, filters):
-            if count and count > 0:
-                url = make_list_url(filters)
-                return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
-            return "0"
+        open_url = build_url(open_names)
+        expired_url = build_url(expired_names)
+        week_url = build_url(week_names)
 
         data.append({
             "assigned_user": user,
-            "open_count": get_link(row.open_count, open_filters),
-            "expired_count": get_link(row.expired_count, expired_filters),
-            "closing_week": get_link(row.closing_week, week_filters),
+            "open_count": make_link(row.open_count, open_url) if open_url else "0",
+            "expired_count": make_link(row.expired_count, expired_url) if expired_url else "0",
+            "closing_week": make_link(row.closing_week, week_url) if week_url else "0",
         })
 
     return columns, data
