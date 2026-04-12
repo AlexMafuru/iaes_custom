@@ -4,38 +4,32 @@ import frappe
 from frappe import _
 from frappe.utils import today, add_days
 
-# These must match your Opportunity status names exactly [cite: 131]
+# These statuses must match your database exactly [cite: 223]
 OPEN_STATUSES = ["Open", "In preparation", "In Preparation"]
 
-def make_list_url(user_email, extra_filters=None):
+def make_ui_url(user_email, extra_filters=None):
     """
-    Constructs the URL using separate parameters. 
-    Using JSON arrays with operators like 'in' or 'like' forces them 
-    into the Advanced Filters pop-up.
+    Constructs a URL using the list-of-lists format.
+    This forces every field into the 'Advanced Filters' pop-over.
     """
-    # 1. Status Filter: Using 'in' forces it into the Advanced UI
-    status_json = json.dumps(["in", OPEN_STATUSES])
+    # 1. Define the mandatory filters
+    filters = [
+        ["Opportunity", "status", "in", OPEN_STATUSES],
+        ["Opportunity", "_assign", "like", f"%{user_email}%"]
+    ]
     
-    # 2. Assigned To Filter: Targets the internal _assign field [cite: 126]
-    assign_json = json.dumps(["like", f"%{user_email}%"])
-    
-    # Build the base URL
-    url = (
-        f"/app/opportunity/view/list?"
-        f"status={urllib.parse.quote(status_json)}&"
-        f"_assign={urllib.parse.quote(assign_json)}"
-    )
-    
-    # 3. Add column-specific filters (e.g., deadline_date) [cite: 150, 155-156]
+    # 2. Add column-specific filters (like deadline_date) if provided [cite: 318, 323-324]
     if extra_filters:
         for field, op_val in extra_filters.items():
-            encoded_val = urllib.parse.quote(json.dumps(op_val))
-            url += f"&{field}={encoded_val}"
+            # op_val is expected to be [operator, value] e.g., ["<", "2026-04-12"]
+            filters.append(["Opportunity", field, op_val[0], op_val[1]])
             
-    return url
+    # 3. Bundle everything into the 'filters' parameter [cite: 225-226]
+    encoded = urllib.parse.quote(json.dumps(filters))
+    return f"/app/opportunity/view/list?filters={encoded}"
 
 def execute(filters=None):
-    # Defining columns as HTML to render links directly from Python [cite: 61-105]
+    # Standard column definitions using HTML fieldtype [cite: 228-272]
     columns = [
         {"label": _("Assigned To"), "fieldname": "assigned_user", "fieldtype": "Link", "options": "User", "width": 220},
         {"label": _("Open"), "fieldname": "open_count", "fieldtype": "HTML", "width": 100},
@@ -43,7 +37,7 @@ def execute(filters=None):
         {"label": _("Closing This Week"), "fieldname": "closing_week", "fieldtype": "HTML", "width": 150},
     ]
 
-    # Data fetching logic [cite: 106-137]
+    # Standard SQL logic for summary counts [cite: 273-304]
     rows = frappe.db.sql("""
         SELECT
             u.name AS assigned_user,
@@ -72,8 +66,8 @@ def execute(filters=None):
 
         def get_html_link(count, extra=None):
             if count and count > 0:
-                # Every link now includes Status and Assigned To by default
-                url = make_list_url(user, extra)
+                # Use the explicit list-of-lists URL format [cite: 175, 178, 181]
+                url = make_ui_url(user, extra)
                 return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
             return "0"
 
