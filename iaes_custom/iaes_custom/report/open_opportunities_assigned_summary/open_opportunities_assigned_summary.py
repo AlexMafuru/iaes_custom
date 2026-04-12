@@ -8,24 +8,28 @@ from frappe.utils import today, add_days
 OPEN_STATUSES = ["Open", "In preparation"]
 
 def make_ui_url(user_email, extra_filters=None):
-    route_filters = [
-        ["Opportunity", "_assign", "like", f"%{user_email}%"],
-        ["Opportunity", "status", "in", OPEN_STATUSES],
-    ]
-
-    if extra_filters:
-        route_filters.extend(extra_filters)
-
-    filters_json = urllib.parse.quote(json.dumps(route_filters))
-    assign_hint = urllib.parse.quote(json.dumps(["like", f"%{user_email}%"]))
+    """
+    Hybrid approach:
+    - status and _assign passed separately so they appear in Advanced Filters UI
+    - extra_filters passed through ?filters= for date-specific filtering
+    - _ts added to reduce SPA caching/sticky previous user issue
+    """
+    status_json = urllib.parse.quote(json.dumps(["in", OPEN_STATUSES]))
+    assign_json = urllib.parse.quote(json.dumps(["like", f"%{user_email}%"]))
     ts = int(time.time() * 1000)
 
-    return (
+    url = (
         f"/app/opportunity/view/list"
-        f"?filters={filters_json}"
-        f"&_assign={assign_hint}"
+        f"?status={status_json}"
+        f"&_assign={assign_json}"
         f"&_ts={ts}"
     )
+
+    if extra_filters:
+        route_filters = urllib.parse.quote(json.dumps(extra_filters))
+        url += f"&filters={route_filters}"
+
+    return url
 
 def execute(filters=None):
     columns = [
@@ -100,16 +104,18 @@ def execute(filters=None):
         data.append({
             "assigned_user": user,
             "open_count": get_html_link(row.open_count),
+
             "expired_count": get_html_link(
                 row.expired_count,
                 [
-                    ["Opportunity", "deadline_date", "<", current_date]
+                    ["deadline_date", "<", current_date]
                 ]
             ),
+
             "closing_week": get_html_link(
                 row.closing_week,
                 [
-                    ["Opportunity", "deadline_date", "between", [current_date, week_end]]
+                    ["deadline_date", "between", [current_date, week_end]]
                 ]
             ),
         })
