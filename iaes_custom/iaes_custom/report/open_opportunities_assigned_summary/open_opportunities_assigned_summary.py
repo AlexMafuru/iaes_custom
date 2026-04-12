@@ -1,4 +1,5 @@
 import json
+import time
 import urllib.parse
 import frappe
 from frappe import _
@@ -7,19 +8,24 @@ from frappe.utils import today, add_days
 OPEN_STATUSES = ["Open", "In preparation"]
 
 def make_ui_url(user_email, extra_filters=None):
-    """
-    Build Frappe list-view URL filters in list-route format:
-    [fieldname, operator, value]
-    """
     route_filters = [
-        ["_assign", "like", f"%{user_email}%"],
-        ["status", "in", OPEN_STATUSES],
+        ["Opportunity", "_assign", "like", f"%{user_email}%"],
+        ["Opportunity", "status", "in", OPEN_STATUSES],
     ]
 
     if extra_filters:
         route_filters.extend(extra_filters)
 
-    return "/app/opportunity/view/list?filters=" + urllib.parse.quote(json.dumps(route_filters))
+    filters_json = urllib.parse.quote(json.dumps(route_filters))
+    assign_hint = urllib.parse.quote(json.dumps(["like", f"%{user_email}%"]))
+    ts = int(time.time() * 1000)
+
+    return (
+        f"/app/opportunity/view/list"
+        f"?filters={filters_json}"
+        f"&_assign={assign_hint}"
+        f"&_ts={ts}"
+    )
 
 def execute(filters=None):
     columns = [
@@ -84,24 +90,26 @@ def execute(filters=None):
         def get_html_link(count, extra_filters=None):
             if count and count > 0:
                 url = make_ui_url(user, extra_filters)
-                return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
+                return (
+                    f'<a href="{url}" '
+                    f'style="font-weight:bold; color:var(--blue-600);">'
+                    f'{count}</a>'
+                )
             return "0"
 
         data.append({
             "assigned_user": user,
             "open_count": get_html_link(row.open_count),
-
             "expired_count": get_html_link(
                 row.expired_count,
                 [
-                    ["deadline_date", "<", current_date]
+                    ["Opportunity", "deadline_date", "<", current_date]
                 ]
             ),
-
             "closing_week": get_html_link(
                 row.closing_week,
                 [
-                    ["deadline_date", "between", [current_date, week_end]]
+                    ["Opportunity", "deadline_date", "between", [current_date, week_end]]
                 ]
             ),
         })
