@@ -8,12 +8,6 @@ from frappe.utils import today, add_days
 OPEN_STATUSES = ["Open", "In preparation"]
 
 def make_ui_url(user_email, extra_filters=None):
-    """
-    Hybrid approach:
-    - status and _assign passed separately so they appear in Advanced Filters UI
-    - extra_filters passed through ?filters= for date-specific filtering
-    - _ts added to reduce SPA caching/sticky previous user issue
-    """
     status_json = urllib.parse.quote(json.dumps(["in", OPEN_STATUSES]))
     assign_json = urllib.parse.quote(json.dumps(["like", f"%{user_email}%"]))
     ts = int(time.time() * 1000)
@@ -26,8 +20,9 @@ def make_ui_url(user_email, extra_filters=None):
     )
 
     if extra_filters:
-        route_filters = urllib.parse.quote(json.dumps(extra_filters))
-        url += f"&filters={route_filters}"
+        for fieldname, condition in extra_filters.items():
+            encoded = urllib.parse.quote(json.dumps(condition))
+            url += f"&{fieldname}={encoded}"
 
     return url
 
@@ -53,12 +48,15 @@ def execute(filters=None):
             "width": 100,
         },
         {
-            "label": _("Closing This Week"),
+            "label": _("Closing in 7 Days"),
             "fieldname": "closing_week",
             "fieldtype": "HTML",
             "width": 150,
         },
     ]
+
+    current_date = str(today())
+    closing_end = str(add_days(today(), 6))
 
     rows = frappe.db.sql("""
         SELECT
@@ -69,7 +67,7 @@ def execute(filters=None):
                  AND o.deadline_date < CURDATE()
                 THEN o.name END) AS expired_count,
             COUNT(DISTINCT CASE
-                WHEN o.deadline_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+                WHEN o.deadline_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 6 DAY)
                 THEN o.name END) AS closing_week
         FROM `tabUser` u
         LEFT JOIN `tabOpportunity` o
@@ -85,8 +83,6 @@ def execute(filters=None):
     """, as_dict=True)
 
     data = []
-    current_date = today()
-    week_end = add_days(current_date, 7)
 
     for row in rows:
         user = row.assigned_user
@@ -103,20 +99,21 @@ def execute(filters=None):
 
         data.append({
             "assigned_user": user,
+
             "open_count": get_html_link(row.open_count),
 
             "expired_count": get_html_link(
                 row.expired_count,
-                [
-                    ["deadline_date", "<", current_date]
-                ]
+                {
+                    "deadline_date": ["<", current_date]
+                }
             ),
 
             "closing_week": get_html_link(
                 row.closing_week,
-                [
-                    ["deadline_date", "between", [current_date, week_end]]
-                ]
+                {
+                    "deadline_date": ["between", [current_date, closing_end]]
+                }
             ),
         })
 
