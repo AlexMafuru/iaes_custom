@@ -4,15 +4,32 @@ import frappe
 from frappe import _
 from frappe.utils import today, add_days
 
+# Ensure these statuses match your Opportunity doctype exactly
 OPEN_STATUSES = ["Open", "In preparation", "In Preparation"]
 
-def make_list_url(filters_list):
+def make_standard_url(user_email, extra_filters=None):
     """
-    Encodes filters into a single JSON array. 
-    This format forces the List View to show all filters in the 'Filters' pop-over.
+    Standardizes the URL to use separate parameters for each field.
+    This format is confirmed to populate 'Filters 2' and 'Filters 3' in the UI.
     """
-    encoded = urllib.parse.quote(json.dumps(filters_list))
-    return f"/app/opportunity/view/list?filters={encoded}"
+    # 1. Build the base filters as JSON lists to trigger 'Advanced' mode in UI
+    status_json = json.dumps(["in", OPEN_STATUSES])
+    assign_json = json.dumps(["like", f"%{user_email}%"])
+    
+    # 2. Construct the URL with individual parameters
+    url = (
+        f"/app/opportunity/view/list?"
+        f"status={urllib.parse.quote(status_json)}&"
+        f"_assign={urllib.parse.quote(assign_json)}"
+    )
+    
+    # 3. Append additional date filters if provided (for Expired/Closing columns)
+    if extra_filters:
+        for field, op_val in extra_filters.items():
+            encoded_val = urllib.parse.quote(json.dumps(op_val))
+            url += f"&{field}={encoded_val}"
+            
+    return url
 
 def execute(filters=None):
     columns = [
@@ -22,7 +39,7 @@ def execute(filters=None):
         {"label": _("Closing This Week"), "fieldname": "closing_week", "fieldtype": "HTML", "width": 150},
     ]
 
-    # Data fetching remains the same as your working version
+    # Data fetching logic using your validated SQL [cite: 106-137]
     rows = frappe.db.sql("""
         SELECT
             u.name AS assigned_user,
@@ -34,7 +51,7 @@ def execute(filters=None):
                 WHEN o.deadline_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) 
                 THEN o.name END) AS closing_week
         FROM `tabUser` u
-        LEFT JOIN `tabOpportunity` o ON o._assign LIKE CONCAT('%%', u.name, '%%')
+        LEFT JOIN `tabOpportunity` o ON COALESCE(o._assign, '') LIKE CONCAT('%%', u.name, '%%')
         WHERE u.enabled = 1 AND u.user_type = 'System User'
             AND o.docstatus < 2 AND o.status IN ('Open', 'In preparation', 'In Preparation')
         GROUP BY u.name
@@ -43,36 +60,24 @@ def execute(filters=None):
     """, as_dict=True)
 
     data = []
-    current_date = today()
-    week_end = add_days(current_date, 7)
+    curr_date = today()
+    wk_end = add_days(curr_date, 7)
 
     for row in rows:
         user = row.assigned_user
-        
-        # Define the basic filters that apply to all counts
-        # We use the [DocType, Field, Operator, Value] format for internal filters
-        base_filters = [
-            ["Opportunity", "status", "in", OPEN_STATUSES],
-            ["Opportunity", "_assign", "like", f"%{user}%"]
-        ]
 
-        def get_link(count, extra_filter=None):
-            if not count or count <= 0:
-                return "0"
-            
-            # Combine base filters with column-specific filters
-            current_filters = list(base_filters)
-            if extra_filter:
-                current_filters.append(extra_filter)
-                
-            url = make_list_url(current_filters)
-            return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
+        def get_html_link(count, extra=None):
+            if count and count > 0:
+                # Every link now uses the separate parameter format
+                url = make_standard_url(user, extra)
+                return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
+            return "0"
 
         data.append({
             "assigned_user": user,
-            "open_count": get_link(row.open_count),
-            "expired_count": get_link(row.expired_count, ["Opportunity", "deadline_date", "<", current_date]),
-            "closing_week": get_link(row.closing_week, ["Opportunity", "deadline_date", "between", [current_date, week_end]]),
+            "open_count": get_html_link(row.open_count),
+            "expired_count": get_html_link(row.expired_count, {"deadline_date": ["<", curr_date]}),
+            "closing_week": get_html_link(row.closing_week, {"deadline_date": ["between", [curr_date, wk_end]]}),
         })
 
     return columns, data
