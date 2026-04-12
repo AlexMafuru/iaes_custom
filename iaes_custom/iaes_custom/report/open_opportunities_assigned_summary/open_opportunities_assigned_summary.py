@@ -6,6 +6,9 @@ from frappe import _
 from frappe.utils import today, add_days
 
 
+OPEN_STATUSES = ["Open", "In preparation", "In Preparation"]
+
+
 def make_list_url(filters):
     encoded = urllib.parse.quote(json.dumps(filters))
     return f"/app/opportunity/view/list?filters={encoded}"
@@ -103,21 +106,22 @@ def execute(filters=None):
 
     for row in rows:
         assigned_user = row.assigned_user
+        assign_pattern = f'%"{assigned_user}"%'
 
         open_filters = [
-            ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
+            ["Opportunity", "status", "in", OPEN_STATUSES],
+            ["Opportunity", "_assign", "like", assign_pattern],
         ]
 
         expired_filters = [
-            ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
+            ["Opportunity", "status", "in", OPEN_STATUSES],
+            ["Opportunity", "_assign", "like", assign_pattern],
             ["Opportunity", "deadline_date", "<", current_date],
         ]
 
         closing_week_filters = [
-            ["Opportunity", "status", "in", ["Open", "In preparation", "In Preparation"]],
-            ["Opportunity", "assigned_to", "like", f"%{assigned_user}%"],
+            ["Opportunity", "status", "in", OPEN_STATUSES],
+            ["Opportunity", "_assign", "like", assign_pattern],
             ["Opportunity", "deadline_date", ">=", current_date],
             ["Opportunity", "deadline_date", "<=", week_end],
         ]
