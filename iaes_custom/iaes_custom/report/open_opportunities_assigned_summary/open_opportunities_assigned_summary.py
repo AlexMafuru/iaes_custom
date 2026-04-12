@@ -26,14 +26,45 @@ def make_ui_url(user_email, extra_filters=None):
 
     return url
 
+def get_indicator_html(color, label):
+    return (
+        f'<span style="display:inline-block; width:10px; height:10px; '
+        f'border-radius:50%; background:{color}; margin-right:8px; '
+        f'vertical-align:middle;"></span>'
+        f'<span style="vertical-align:middle;">{label}</span>'
+    )
+
+def get_risk_color(value, low_warning=1, high_warning=3):
+    value = value or 0
+    if value == 0:
+        return "#28a745"   # green
+    elif value <= high_warning:
+        return "#fd7e14"   # orange
+    return "#dc3545"       # red
+
+def get_clickable_count(count, url=None, color="var(--blue-600)"):
+    count = count or 0
+    if url and count > 0:
+        return (
+            f'<a href="{url}" '
+            f'style="font-weight:bold; color:{color};">'
+            f'{count}</a>'
+        )
+    return f'<span style="font-weight:bold; color:{color};">{count}</span>'
+
 def execute(filters=None):
     columns = [
         {
             "label": _("Assigned To"),
             "fieldname": "assigned_user",
-            "fieldtype": "Link",
-            "options": "User",
-            "width": 220,
+            "fieldtype": "Data",
+            "width": 240,
+        },
+        {
+            "label": _("Health"),
+            "fieldname": "health_indicator",
+            "fieldtype": "HTML",
+            "width": 130,
         },
         {
             "label": _("Open"),
@@ -45,13 +76,13 @@ def execute(filters=None):
             "label": _("Expired"),
             "fieldname": "expired_count",
             "fieldtype": "HTML",
-            "width": 100,
+            "width": 110,
         },
         {
             "label": _("Closing in 7 Days"),
             "fieldname": "closing_week",
             "fieldtype": "HTML",
-            "width": 150,
+            "width": 160,
         },
     ]
 
@@ -83,38 +114,59 @@ def execute(filters=None):
     """, as_dict=True)
 
     data = []
+    total_open = 0
+    total_expired = 0
+    total_closing = 0
 
     for row in rows:
         user = row.assigned_user
+        open_count = row.open_count or 0
+        expired_count = row.expired_count or 0
+        closing_count = row.closing_week or 0
 
-        def get_html_link(count, extra_filters=None):
-            if count and count > 0:
-                url = make_ui_url(user, extra_filters)
-                return (
-                    f'<a href="{url}" '
-                    f'style="font-weight:bold; color:var(--blue-600);">'
-                    f'{count}</a>'
-                )
-            return "0"
+        total_open += open_count
+        total_expired += expired_count
+        total_closing += closing_count
+
+        open_url = make_ui_url(user)
+        expired_url = make_ui_url(user, {
+            "deadline_date": ["<", current_date]
+        })
+        closing_url = make_ui_url(user, {
+            "deadline_date": ["between", [current_date, closing_end]]
+        })
+
+        # Overall health logic
+        # Red if expired > 3
+        # Orange if expired > 0 or closing in 7 days > 2
+        # Green otherwise
+        if expired_count > 3:
+            health_html = get_indicator_html("#dc3545", "Critical")
+        elif expired_count > 0 or closing_count > 2:
+            health_html = get_indicator_html("#fd7e14", "Attention")
+        else:
+            health_html = get_indicator_html("#28a745", "Healthy")
+
+        expired_color = get_risk_color(expired_count, high_warning=3)
+        closing_color = get_risk_color(closing_count, high_warning=2)
 
         data.append({
             "assigned_user": user,
-
-            "open_count": get_html_link(row.open_count),
-
-            "expired_count": get_html_link(
-                row.expired_count,
-                {
-                    "deadline_date": ["<", current_date]
-                }
-            ),
-
-            "closing_week": get_html_link(
-                row.closing_week,
-                {
-                    "deadline_date": ["between", [current_date, closing_end]]
-                }
-            ),
+            "health_indicator": health_html,
+            "open_count": get_clickable_count(open_count, open_url, "var(--blue-600)"),
+            "expired_count": get_clickable_count(expired_count, expired_url, expired_color),
+            "closing_week": get_clickable_count(closing_count, closing_url, closing_color),
         })
+
+    # Totals row
+    total_health = get_indicator_html("#1f6feb", "Summary")
+
+    data.append({
+        "assigned_user": "<b>TOTAL</b>",
+        "health_indicator": total_health,
+        "open_count": f"<b>{total_open}</b>",
+        "expired_count": f'<b style="color:{get_risk_color(total_expired, high_warning=3)};">{total_expired}</b>',
+        "closing_week": f'<b style="color:{get_risk_color(total_closing, high_warning=2)};">{total_closing}</b>',
+    })
 
     return columns, data
