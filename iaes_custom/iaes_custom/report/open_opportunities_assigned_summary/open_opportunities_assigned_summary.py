@@ -4,29 +4,28 @@ import frappe
 from frappe import _
 from frappe.utils import today, add_days
 
-# Statuses to force into the 'Filters' pop-over [cite: 131, 223]
-# Including None (null) matches the behavior in your working screenshot
+# Including None/null forces the UI to use the 'In' operator in the Advanced Menu
 OPEN_STATUSES = ["Open", "In preparation", "In Preparation", None]
 
 def make_ui_url(user_email, extra_filters=None):
     """
-    Constructs the URL using separate parameters for each field.
-    This format forces fields into the 'Filters' pop-over.
+    Standardizes the URL to use separate parameters.
+    This format is proven to populate the 'Filters' pop-over correctly.
     """
-    # 1. Status Filter: JSON array with 'in' operator
+    # 1. Status Filter: JSON encoded list with 'in' operator
     status_json = json.dumps(["in", OPEN_STATUSES])
     
-    # 2. Assigned To Filter: Targets the internal _assign field [cite: 58, 145]
+    # 2. Assigned To Filter: JSON encoded list with 'like' operator
     assign_json = json.dumps(["like", f"%{user_email}%"])
     
-    # Build the URL with status and _assign as separate keys
+    # Base URL with standard filters as individual keys
     url = (
         f"/app/opportunity/view/list?"
         f"status={urllib.parse.quote(status_json)}&"
         f"_assign={urllib.parse.quote(assign_json)}"
     )
     
-    # 3. Add column-specific filters (e.g., deadline_date) if provided [cite: 150, 155-156]
+    # 3. Add column-specific date filters (for Expired and Closing columns)
     if extra_filters:
         for field, op_val in extra_filters.items():
             encoded_val = urllib.parse.quote(json.dumps(op_val))
@@ -42,7 +41,7 @@ def execute(filters=None):
         {"label": _("Closing This Week"), "fieldname": "closing_week", "fieldtype": "HTML", "width": 150},
     ]
 
-    # SQL logic remains exactly as you have it [cite: 106-137, 273-304]
+    # SQL logic for summary counts
     rows = frappe.db.sql("""
         SELECT
             u.name AS assigned_user,
@@ -71,7 +70,7 @@ def execute(filters=None):
 
         def get_html_link(count, extra=None):
             if count and count > 0:
-                # Force every link to include the Status parameter [cite: 332-334]
+                # Force every link to follow the successful 'Closing' format
                 url = make_ui_url(user, extra)
                 return f'<a href="{url}" style="font-weight:bold; color:var(--blue-600);">{count}</a>'
             return "0"
