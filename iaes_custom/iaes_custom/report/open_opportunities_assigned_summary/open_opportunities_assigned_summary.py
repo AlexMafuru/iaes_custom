@@ -27,7 +27,7 @@ def get_names_for_bucket(assigned_user, bucket, current_date, week_end):
 
     values = {
         "statuses": tuple(OPEN_STATUSES),
-        "assign_like": f'%{assigned_user}%',
+        "assign_like": f"%{assigned_user}%",
         "current_date": current_date,
         "week_end": week_end,
     }
@@ -54,6 +54,22 @@ def get_names_for_bucket(assigned_user, bucket, current_date, week_end):
     )
 
     return [r.name for r in rows]
+
+
+def build_filters(assigned_user, names, bucket, current_date, week_end):
+    filters = [
+        ["Opportunity", "status", "in", OPEN_STATUSES],
+        ["Opportunity", "_assign", "like", f"%{assigned_user}%"],
+        ["Opportunity", "name", "in", names],
+    ]
+
+    if bucket == "expired":
+        filters.append(["Opportunity", "deadline_date", "<", current_date])
+    elif bucket == "closing_week":
+        filters.append(["Opportunity", "deadline_date", ">=", current_date])
+        filters.append(["Opportunity", "deadline_date", "<=", week_end])
+
+    return filters
 
 
 def execute(filters=None):
@@ -129,16 +145,14 @@ def execute(filters=None):
         expired_names = get_names_for_bucket(user, "expired", current_date, week_end)
         week_names = get_names_for_bucket(user, "closing_week", current_date, week_end)
 
-        def build_url(names):
+        def build_url(names, bucket):
             if not names:
                 return None
-            return make_list_url([
-                ["Opportunity", "name", "in", names]
-            ])
+            return make_list_url(build_filters(user, names, bucket, current_date, week_end))
 
-        open_url = build_url(open_names)
-        expired_url = build_url(expired_names)
-        week_url = build_url(week_names)
+        open_url = build_url(open_names, "open")
+        expired_url = build_url(expired_names, "expired")
+        week_url = build_url(week_names, "closing_week")
 
         data.append({
             "assigned_user": user,
