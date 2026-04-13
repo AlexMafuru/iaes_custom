@@ -4,14 +4,14 @@ frappe.query_reports["Customer Performance 3-Year Funnel"] = {
             fieldname: "from_year",
             label: __("From Year"),
             fieldtype: "Int",
-            default: frappe.datetime.now_datetime().getFullYear() - 2,
+            default: new Date().getFullYear() - 2,
             reqd: 1
         },
         {
             fieldname: "to_year",
             label: __("To Year"),
             fieldtype: "Int",
-            default: frappe.datetime.now_datetime().getFullYear(),
+            default: new Date().getFullYear(),
             reqd: 1
         },
         {
