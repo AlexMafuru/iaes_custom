@@ -1,0 +1,8 @@
+{
+ "doctype": "Report",
+ "report_name": "Customer Performance 3-Year Funnel",
+ "report_type": "Script Report",
+ "ref_doctype": "Customer",
+ "module": "IAES Custom",
+ "is_standard": "Yes"
+}
