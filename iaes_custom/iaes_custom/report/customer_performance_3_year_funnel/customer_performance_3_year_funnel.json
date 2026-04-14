@@ -1,5 +1,6 @@
 {
  "doctype": "Report",
+ "name": "Customer Performance 3-Year Funnel",
  "report_name": "Customer Performance 3-Year Funnel",
  "report_type": "Script Report",
  "ref_doctype": "Customer",
