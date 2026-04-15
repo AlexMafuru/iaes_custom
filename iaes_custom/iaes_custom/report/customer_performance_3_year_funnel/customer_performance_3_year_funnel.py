@@ -36,6 +36,12 @@ def get_columns(years):
             "fieldtype": "Data",
             "width": 90,
         },
+        {
+            "label": _("Industry"),
+            "fieldname": "industry",
+            "fieldtype": "Data",
+            "width": 120,
+        },
     ]
 
     for year in years:
@@ -80,6 +86,7 @@ def get_data(filters, years):
                 row[f"conv_opty_so_{y}"] = 0
                 row[f"conv_qtn_so_{y}"] = 0
             row["customer_type"] = "New"
+            row["industry"] = frappe.db.get_value("Customer", customer, "industry") or ""
             row["company_currency"] = get_company_currency(filters)
             customer_map[customer] = row
         return customer_map[customer]
@@ -148,6 +155,7 @@ def get_data(filters, years):
         total_row = {
             "customer": "TOTAL",
             "customer_type": "",
+            "industry": "",
             "indicator": "Blue",
             "company_currency": get_company_currency(filters),
         }
