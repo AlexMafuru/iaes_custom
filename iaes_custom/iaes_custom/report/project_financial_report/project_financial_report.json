@@ -12,7 +12,7 @@ cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/p
  "letter_head": null,
  "modified": "2026-04-15 00:00:00.000000",
  "modified_by": "Administrator",
- "module": "Projects",
+ "module": "Iaes Custom",
  "name": "Project Financial Report",
  "owner": "Administrator",
  "prepared_report": 0,
