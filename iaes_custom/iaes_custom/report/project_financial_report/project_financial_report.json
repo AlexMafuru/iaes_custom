@@ -1,4 +1,3 @@
-cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/project_financial_report.json << 'EOF'
 {
  "add_total_row": 1,
  "columns": [],
@@ -27,4 +26,3 @@ cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/p
   {"role": "System Manager"}
  ]
 }
-EOF
