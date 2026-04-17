@@ -1,5 +1,3 @@
-cd ~/frappe-bench
-cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/project_financial_report.py << 'EOF'
 import frappe
 from frappe import _
 from frappe.utils import flt, cstr, nowdate, date_diff
@@ -9,8 +7,7 @@ def execute(filters=None):
     if not filters:
         filters = {}
     if not filters.get("company"):
-        filters["company"] = frappe.defaults.get_user_default("company") or \
-            frappe.db.get_single_value("Global Defaults", "default_company")
+        filters["company"] = frappe.db.get_single_value("Global Defaults", "default_company")
     columns = get_columns()
     data = get_data(filters)
     chart = get_chart(data)
@@ -176,19 +173,22 @@ def get_report_summary(data):
     total_billed = sum(flt(r.get("sinv_value",    0)) for r in data)
     total_costs  = sum(flt(r.get("total_costs",   0)) for r in data)
     total_margin = sum(flt(r.get("gross_margin",  0)) for r in data)
-    overdue      = sum(1 for r in data
-                       if r.get("status") == "Open"
-                       and r.get("days_remaining") is not None
-                       and r["days_remaining"] < 0)
-    margin_pct   = (total_margin / total_billed * 100) if total_billed else 0
+    overdue = 0
+    for r in data:
+        if r.get("status") == "Open" and r.get("days_remaining") is not None and r["days_remaining"] < 0:
+            overdue += 1
+    margin_pct = (total_margin / total_billed * 100) if total_billed else 0
+    margin_color = "green" if total_margin >= 0 else "red"
+    pct_color = "green" if margin_pct >= 15 else "orange"
+    overdue_color = "red" if overdue else "green"
     return [
         {"value": len(data),           "label": _("Total Projects"),     "datatype": "Int",      "color": "blue"},
         {"value": total_value,         "label": _("Total Project Value"), "datatype": "Currency", "color": "blue"},
         {"value": total_billed,        "label": _("Total SINV Billed"),   "datatype": "Currency", "color": "green"},
         {"value": total_costs,         "label": _("Total Costs"),         "datatype": "Currency", "color": "orange"},
-        {"value": total_margin,        "label": _("Gross Margin"),        "datatype": "Currency", "color": "green" if total_margin >= 0 else "red"},
-        {"value": round(margin_pct, 1),"label": _("Margin %"),            "datatype": "Percent",  "color": "green" if margin_pct >= 15 else "orange"},
-        {"value": overdue,             "label": _("Overdue Projects"),    "datatype": "Int",      "color": "red" if overdue else "green"},
+        {"value": total_margin,        "label": _("Gross Margin"),        "datatype": "Currency", "color": margin_color},
+        {"value": round(margin_pct,1), "label": _("Margin %"),            "datatype": "Percent",  "color": pct_color},
+        {"value": overdue,             "label": _("Overdue Projects"),    "datatype": "Int",      "color": overdue_color},
     ]
 
 
@@ -217,4 +217,3 @@ def get_chart(data):
         "axisOptions": {"xIsSeries": True},
         "height": 280,
     }
-EOF
