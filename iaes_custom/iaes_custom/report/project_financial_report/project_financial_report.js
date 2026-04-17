@@ -1,4 +1,3 @@
-cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/project_financial_report.js << 'EOF'
 frappe.query_reports["Project Financial Report"] = {
     filters: [
         { fieldname:"company",      label:__("Company"),             fieldtype:"Link",   options:"Company",  default:frappe.defaults.get_user_default("Company"), reqd:1 },
@@ -64,4 +63,3 @@ function _open_list(report, doctype_label, slug) {
         :`/app/${slug}?filters=${encodeURIComponent(JSON.stringify([[doctype_label,"project","in",projects],[doctype_label,"docstatus","=",1]]))}`;
     window.open(url,"_blank");
 }
-EOF
