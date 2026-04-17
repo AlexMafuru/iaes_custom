@@ -1,54 +1,56 @@
+cd ~/frappe-bench
 cat > apps/iaes_custom/iaes_custom/iaes_custom/report/project_financial_report/project_financial_report.py << 'EOF'
 import frappe
 from frappe import _
 from frappe.utils import flt, cstr, nowdate, date_diff
 
+
 def execute(filters=None):
     if not filters:
         filters = {}
-    validate_filters(filters)
+    if not filters.get("company"):
+        filters["company"] = frappe.defaults.get_user_default("company") or \
+            frappe.db.get_single_value("Global Defaults", "default_company")
     columns = get_columns()
     data = get_data(filters)
     chart = get_chart(data)
     summary = get_report_summary(data)
     return columns, data, None, chart, summary
 
-def validate_filters(filters):
-    if not filters.get("company"):
-        frappe.throw(_("Please select a Company to run this report."))
 
 def get_columns():
     return [
-        {"label": _("Project ID"),               "fieldname": "project",             "fieldtype": "Link",     "options": "Project",  "width": 130},
-        {"label": _("Project Name"),              "fieldname": "project_name",        "fieldtype": "Data",                            "width": 220},
-        {"label": _("Customer"),                  "fieldname": "customer",            "fieldtype": "Link",     "options": "Customer", "width": 160},
-        {"label": _("Status"),                    "fieldname": "status",              "fieldtype": "Data",                            "width": 90},
-        {"label": _("% Complete"),                "fieldname": "percent_complete",    "fieldtype": "Percent",                         "width": 90},
-        {"label": _("Project Value (Excl. VAT)"), "fieldname": "project_value",       "fieldtype": "Currency", "options": "currency", "width": 170},
-        {"label": _("Sales Orders (SO)"),         "fieldname": "so_value",            "fieldtype": "Currency", "options": "currency", "width": 150},
-        {"label": _("SO Count"),                  "fieldname": "so_count",            "fieldtype": "Int",                             "width": 80},
-        {"label": _("SINV Billed (Excl. VAT)"),   "fieldname": "sinv_value",          "fieldtype": "Currency", "options": "currency", "width": 165},
-        {"label": _("SINV Collected"),            "fieldname": "sinv_paid",           "fieldtype": "Currency", "options": "currency", "width": 145},
-        {"label": _("SINV Outstanding"),          "fieldname": "sinv_outstanding",    "fieldtype": "Currency", "options": "currency", "width": 150},
-        {"label": _("SINV Count"),                "fieldname": "sinv_count",          "fieldtype": "Int",                             "width": 90},
-        {"label": _("PINV Purchases (Excl. VAT)"), "fieldname": "pinv_value",         "fieldtype": "Currency", "options": "currency", "width": 175},
-        {"label": _("PINV Paid"),                 "fieldname": "pinv_paid",           "fieldtype": "Currency", "options": "currency", "width": 130},
-        {"label": _("PINV Outstanding"),          "fieldname": "pinv_outstanding",    "fieldtype": "Currency", "options": "currency", "width": 150},
-        {"label": _("PINV Count"),                "fieldname": "pinv_count",          "fieldtype": "Int",                             "width": 85},
-        {"label": _("Expense Claims"),            "fieldname": "exp_value",           "fieldtype": "Currency", "options": "currency", "width": 140},
-        {"label": _("Exp Reimbursed"),            "fieldname": "exp_paid",            "fieldtype": "Currency", "options": "currency", "width": 140},
-        {"label": _("Exp Pending"),               "fieldname": "exp_pending",         "fieldtype": "Currency", "options": "currency", "width": 130},
-        {"label": _("Exp Count"),                 "fieldname": "exp_count",           "fieldtype": "Int",                             "width": 85},
-        {"label": _("Stock / Materials Cost"),    "fieldname": "stock_value",         "fieldtype": "Currency", "options": "currency", "width": 165},
-        {"label": _("STE Count"),                 "fieldname": "ste_count",           "fieldtype": "Int",                             "width": 85},
-        {"label": _("Total Costs"),               "fieldname": "total_costs",         "fieldtype": "Currency", "options": "currency", "width": 140},
-        {"label": _("Gross Margin"),              "fieldname": "gross_margin",        "fieldtype": "Currency", "options": "currency", "width": 140},
-        {"label": _("Margin %"),                  "fieldname": "margin_pct",          "fieldtype": "Percent",                         "width": 90},
-        {"label": _("Start Date"),                "fieldname": "expected_start_date", "fieldtype": "Date",                            "width": 110},
-        {"label": _("End Date"),                  "fieldname": "expected_end_date",   "fieldtype": "Date",                            "width": 110},
-        {"label": _("Days Remaining"),            "fieldname": "days_remaining",      "fieldtype": "Int",                             "width": 125},
-        {"label": _("Currency"),                  "fieldname": "currency",            "fieldtype": "Data",     "hidden": 1,           "width": 80},
+        {"label": _("Project ID"),                "fieldname": "project",             "fieldtype": "Link",     "options": "Project",  "width": 130},
+        {"label": _("Project Name"),               "fieldname": "project_name",        "fieldtype": "Data",                            "width": 220},
+        {"label": _("Customer"),                   "fieldname": "customer",            "fieldtype": "Link",     "options": "Customer", "width": 160},
+        {"label": _("Status"),                     "fieldname": "status",              "fieldtype": "Data",                            "width": 90},
+        {"label": _("% Complete"),                 "fieldname": "percent_complete",    "fieldtype": "Percent",                         "width": 90},
+        {"label": _("Project Value (Excl. VAT)"),  "fieldname": "project_value",       "fieldtype": "Currency", "options": "currency", "width": 170},
+        {"label": _("Sales Orders (SO)"),          "fieldname": "so_value",            "fieldtype": "Currency", "options": "currency", "width": 150},
+        {"label": _("SO Count"),                   "fieldname": "so_count",            "fieldtype": "Int",                             "width": 80},
+        {"label": _("SINV Billed (Excl. VAT)"),    "fieldname": "sinv_value",          "fieldtype": "Currency", "options": "currency", "width": 165},
+        {"label": _("SINV Collected"),             "fieldname": "sinv_paid",           "fieldtype": "Currency", "options": "currency", "width": 145},
+        {"label": _("SINV Outstanding"),           "fieldname": "sinv_outstanding",    "fieldtype": "Currency", "options": "currency", "width": 150},
+        {"label": _("SINV Count"),                 "fieldname": "sinv_count",          "fieldtype": "Int",                             "width": 90},
+        {"label": _("PINV Purchases (Excl. VAT)"), "fieldname": "pinv_value",          "fieldtype": "Currency", "options": "currency", "width": 175},
+        {"label": _("PINV Paid"),                  "fieldname": "pinv_paid",           "fieldtype": "Currency", "options": "currency", "width": 130},
+        {"label": _("PINV Outstanding"),           "fieldname": "pinv_outstanding",    "fieldtype": "Currency", "options": "currency", "width": 150},
+        {"label": _("PINV Count"),                 "fieldname": "pinv_count",          "fieldtype": "Int",                             "width": 85},
+        {"label": _("Expense Claims"),             "fieldname": "exp_value",           "fieldtype": "Currency", "options": "currency", "width": 140},
+        {"label": _("Exp Reimbursed"),             "fieldname": "exp_paid",            "fieldtype": "Currency", "options": "currency", "width": 140},
+        {"label": _("Exp Pending"),                "fieldname": "exp_pending",         "fieldtype": "Currency", "options": "currency", "width": 130},
+        {"label": _("Exp Count"),                  "fieldname": "exp_count",           "fieldtype": "Int",                             "width": 85},
+        {"label": _("Stock / Materials Cost"),     "fieldname": "stock_value",         "fieldtype": "Currency", "options": "currency", "width": 165},
+        {"label": _("STE Count"),                  "fieldname": "ste_count",           "fieldtype": "Int",                             "width": 85},
+        {"label": _("Total Costs"),                "fieldname": "total_costs",         "fieldtype": "Currency", "options": "currency", "width": 140},
+        {"label": _("Gross Margin"),               "fieldname": "gross_margin",        "fieldtype": "Currency", "options": "currency", "width": 140},
+        {"label": _("Margin %"),                   "fieldname": "margin_pct",          "fieldtype": "Percent",                         "width": 90},
+        {"label": _("Start Date"),                 "fieldname": "expected_start_date", "fieldtype": "Date",                            "width": 110},
+        {"label": _("End Date"),                   "fieldname": "expected_end_date",   "fieldtype": "Date",                            "width": 110},
+        {"label": _("Days Remaining"),             "fieldname": "days_remaining",      "fieldtype": "Int",                             "width": 125},
+        {"label": _("Currency"),                   "fieldname": "currency",            "fieldtype": "Data",     "hidden": 1,           "width": 80},
     ]
+
 
 def get_data(filters):
     conditions, filter_values = get_conditions(filters)
@@ -143,30 +145,41 @@ def get_data(filters):
         row["days_remaining"] = date_diff(row.expected_end_date, today) if row.expected_end_date else None
     return rows
 
+
 def get_conditions(filters):
     conditions, values = [], {"company": filters.get("company")}
     if filters.get("status"):
-        conditions.append("AND p.status = %(status)s");        values["status"]    = filters["status"]
+        conditions.append("AND p.status = %(status)s")
+        values["status"] = filters["status"]
     if filters.get("customer"):
-        conditions.append("AND p.customer = %(customer)s");    values["customer"]  = filters["customer"]
+        conditions.append("AND p.customer = %(customer)s")
+        values["customer"] = filters["customer"]
     if filters.get("project"):
-        conditions.append("AND p.name = %(project)s");         values["project"]   = filters["project"]
+        conditions.append("AND p.name = %(project)s")
+        values["project"] = filters["project"]
     if filters.get("from_date"):
-        conditions.append("AND p.expected_start_date >= %(from_date)s"); values["from_date"] = filters["from_date"]
+        conditions.append("AND p.expected_start_date >= %(from_date)s")
+        values["from_date"] = filters["from_date"]
     if filters.get("to_date"):
-        conditions.append("AND p.expected_end_date <= %(to_date)s");     values["to_date"]   = filters["to_date"]
+        conditions.append("AND p.expected_end_date <= %(to_date)s")
+        values["to_date"] = filters["to_date"]
     if filters.get("overdue_only"):
-        conditions.append("AND p.expected_end_date < %(today)s AND p.status = 'Open'"); values["today"] = nowdate()
+        conditions.append("AND p.expected_end_date < %(today)s AND p.status = 'Open'")
+        values["today"] = nowdate()
     return " ".join(conditions), values
 
+
 def get_report_summary(data):
-    if not data: return []
+    if not data:
+        return []
     total_value  = sum(flt(r.get("project_value", 0)) for r in data)
     total_billed = sum(flt(r.get("sinv_value",    0)) for r in data)
     total_costs  = sum(flt(r.get("total_costs",   0)) for r in data)
     total_margin = sum(flt(r.get("gross_margin",  0)) for r in data)
-    overdue      = sum(1 for r in data if r.get("status") == "Open"
-                       and r.get("days_remaining") is not None and r["days_remaining"] < 0)
+    overdue      = sum(1 for r in data
+                       if r.get("status") == "Open"
+                       and r.get("days_remaining") is not None
+                       and r["days_remaining"] < 0)
     margin_pct   = (total_margin / total_billed * 100) if total_billed else 0
     return [
         {"value": len(data),           "label": _("Total Projects"),     "datatype": "Int",      "color": "blue"},
@@ -174,22 +187,28 @@ def get_report_summary(data):
         {"value": total_billed,        "label": _("Total SINV Billed"),   "datatype": "Currency", "color": "green"},
         {"value": total_costs,         "label": _("Total Costs"),         "datatype": "Currency", "color": "orange"},
         {"value": total_margin,        "label": _("Gross Margin"),        "datatype": "Currency", "color": "green" if total_margin >= 0 else "red"},
-        {"value": round(margin_pct,1), "label": _("Margin %"),            "datatype": "Percent",  "color": "green" if margin_pct >= 15 else "orange"},
+        {"value": round(margin_pct, 1),"label": _("Margin %"),            "datatype": "Percent",  "color": "green" if margin_pct >= 15 else "orange"},
         {"value": overdue,             "label": _("Overdue Projects"),    "datatype": "Int",      "color": "red" if overdue else "green"},
     ]
 
+
 def get_chart(data):
-    if not data: return {}
-    top10 = sorted([r for r in data if r.get("project_value", 0) > 0],
-                   key=lambda r: r["project_value"], reverse=True)[:10]
-    if not top10: return {}
+    if not data:
+        return {}
+    top10 = sorted(
+        [r for r in data if r.get("project_value", 0) > 0],
+        key=lambda r: r["project_value"],
+        reverse=True
+    )[:10]
+    if not top10:
+        return {}
     return {
         "data": {
-            "labels": [cstr(r.get("project","")) for r in top10],
+            "labels": [cstr(r.get("project", "")) for r in top10],
             "datasets": [
-                {"name": _("Project Value"), "values": [flt(r.get("project_value",0)) for r in top10], "chartType": "bar"},
-                {"name": _("SINV Billed"),   "values": [flt(r.get("sinv_value",   0)) for r in top10], "chartType": "bar"},
-                {"name": _("Total Costs"),   "values": [flt(r.get("total_costs",  0)) for r in top10], "chartType": "bar"},
+                {"name": _("Project Value"), "values": [flt(r.get("project_value", 0)) for r in top10], "chartType": "bar"},
+                {"name": _("SINV Billed"),   "values": [flt(r.get("sinv_value",    0)) for r in top10], "chartType": "bar"},
+                {"name": _("Total Costs"),   "values": [flt(r.get("total_costs",   0)) for r in top10], "chartType": "bar"},
             ],
         },
         "type": "bar",
