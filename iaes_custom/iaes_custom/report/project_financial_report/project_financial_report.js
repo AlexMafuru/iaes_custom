@@ -8,6 +8,7 @@ frappe.query_reports["Project Financial Report"] = {
         { fieldname:"to_date",      label:__("Expected End To"),     fieldtype:"Date" },
         { fieldname:"overdue_only", label:__("Overdue Only"),        fieldtype:"Check",  default:0 },
     ],
+
     onload(report) {
         report.page.add_inner_button(__("Sales Invoices"),    () => _open_list(report,"Sales Invoice",   "sales-invoice"),    __("View Documents"));
         report.page.add_inner_button(__("Purchase Invoices"), () => _open_list(report,"Purchase Invoice","purchase-invoice"), __("View Documents"));
@@ -15,10 +16,13 @@ frappe.query_reports["Project Financial Report"] = {
         report.page.add_inner_button(__("Stock Entries"),     () => _open_list(report,"Stock Entry",     "stock-entry"),      __("View Documents"));
         report.page.add_inner_button(__("Sales Orders"),      () => _open_list(report,"Sales Order",     "sales-order"),      __("View Documents"));
     },
+
     formatter(value, row, column, data, default_formatter) {
         if (!data) return default_formatter(value, row, column, data);
         value = default_formatter(value, row, column, data);
         const fn = column.fieldname;
+
+        // Clickable financial links
         if (fn==="so_value"         && data.so_count   > 0) value = _link(value,"sales-order",      data.project,`${data.so_count} Sales Order(s)`);
         if (fn==="sinv_value"       && data.sinv_count > 0) value = _link(value,"sales-invoice",    data.project,`${data.sinv_count} Sales Invoice(s)`);
         if (fn==="sinv_paid"        && data.sinv_count > 0) value = _link(value,"sales-invoice",    data.project,"Collected – click to view");
@@ -29,30 +33,67 @@ frappe.query_reports["Project Financial Report"] = {
         if (fn==="exp_value"        && data.exp_count  > 0) value = _link(value,"expense-claim",    data.project,`${data.exp_count} Expense Claim(s)`);
         if (fn==="exp_paid"         && data.exp_count  > 0) value = _link(value,"expense-claim",    data.project,"Reimbursed – click to view");
         if (fn==="stock_value"      && data.ste_count  > 0) value = _link(value,"stock-entry",      data.project,`${data.ste_count} Stock Entry/Entries`);
+
+        // Status badge
         if (fn==="status") {
             const c={Open:"blue",Completed:"green",Cancelled:"red"}[data.status]||"gray";
             value=`<span class="badge badge-${c}" style="font-size:11px;padding:3px 8px">${data.status}</span>`;
         }
+
+        // Days Remaining — numeric only
         if (fn==="days_remaining" && data.days_remaining!=null) {
-            if (data.status==="Completed")    value=`<span style="color:var(--green-500)">&#10003; Done</span>`;
-            else if (data.status==="Cancelled") value=`<span style="color:var(--text-muted)">N/A</span>`;
-            else if (data.days_remaining<0)   value=`<span style="color:var(--red-500);font-weight:600">${Math.abs(data.days_remaining)}d overdue</span>`;
-            else if (data.days_remaining<=14) value=`<span style="color:var(--red-400);font-weight:600">${data.days_remaining}d left</span>`;
-            else if (data.days_remaining<=30) value=`<span style="color:var(--yellow-500);font-weight:500">${data.days_remaining}d left</span>`;
-            else                              value=`<span style="color:var(--green-500)">${data.days_remaining}d left</span>`;
+            if (data.status==="Completed"||data.status==="Cancelled") {
+                value=`<span style="color:var(--text-muted)">—</span>`;
+            } else if (data.days_remaining<0) {
+                value=`<span style="color:var(--red-500);font-weight:600">${data.days_remaining}</span>`;
+            } else if (data.days_remaining<=14) {
+                value=`<span style="color:var(--red-400);font-weight:600">${data.days_remaining}</span>`;
+            } else if (data.days_remaining<=30) {
+                value=`<span style="color:var(--yellow-500);font-weight:500">${data.days_remaining}</span>`;
+            } else {
+                value=`<span style="color:var(--green-500)">${data.days_remaining}</span>`;
+            }
         }
-        if (fn==="gross_margin") value=`<span style="color:${data.gross_margin<0?"var(--red-500)":"var(--green-600)"};font-weight:500">${value}</span>`;
-        if (fn==="margin_pct")   value=`<span style="color:${data.margin_pct<0?"var(--red-500)":data.margin_pct<10?"var(--yellow-600)":"var(--green-600)"}">${value}</span>`;
+
+        // Timeline Status — filterable text column
+        if (fn==="timeline_status" && value) {
+            if (value==="Done")
+                value=`<span style="color:var(--green-500);font-weight:500">&#10003; Done</span>`;
+            else if (value==="N/A"||value==="No end date")
+                value=`<span style="color:var(--text-muted)">${value}</span>`;
+            else if (value==="Due today")
+                value=`<span style="color:var(--red-500);font-weight:700">&#9888; Due today</span>`;
+            else if (value.includes("overdue"))
+                value=`<span style="color:var(--red-500);font-weight:600">&#9888; ${value}</span>`;
+            else {
+                const days=parseInt(value);
+                if (days<=14)      value=`<span style="color:var(--red-400);font-weight:600">&#9200; ${value}</span>`;
+                else if (days<=30) value=`<span style="color:var(--yellow-500);font-weight:500">&#9200; ${value}</span>`;
+                else               value=`<span style="color:var(--green-500)">&#10003; ${value}</span>`;
+            }
+        }
+
+        // Gross Margin colour
+        if (fn==="gross_margin")
+            value=`<span style="color:${data.gross_margin<0?"var(--red-500)":"var(--green-600)"};font-weight:500">${value}</span>`;
+
+        // Margin % colour
+        if (fn==="margin_pct")
+            value=`<span style="color:${data.margin_pct<0?"var(--red-500)":data.margin_pct<10?"var(--yellow-600)":"var(--green-600)"}">${value}</span>`;
+
         return value;
     },
 };
+
 function _link(display, slug, project, tip, outstanding) {
     if (!display || display==="0.00" || display==="0") return display;
     const enc=encodeURIComponent(project);
     const extra=outstanding?"&outstanding_amount=>0":"";
     const color=outstanding?"var(--red-400)":"var(--blue-500)";
-    return `<a href="/app/${slug}?project=${enc}&docstatus=1${extra}" target="_blank" title="${tip}" style="text-decoration:underline;text-underline-offset:2px;color:${color}">${display}</a>`;
+    return `<a href="/app/${slug}?project=${enc}&docstatus=1${extra}" target="_blank" title="${tip}"
+               style="text-decoration:underline;text-underline-offset:2px;color:${color}">${display}</a>`;
 }
+
 function _open_list(report, doctype_label, slug) {
     const rows=report.data;
     if (!rows||!rows.length){frappe.msgprint(__("Run the report first."));return;}
