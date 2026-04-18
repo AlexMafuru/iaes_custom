@@ -3,11 +3,15 @@ from frappe import _
 from frappe.utils import date_diff, flt, cint, getdate, get_first_day, get_last_day, nowdate
 from datetime import datetime, date, timedelta, time as dtime
 
-SHIFT_IN_TIME   = dtime(8,  0, 0)
-SHIFT_OUT_TIME  = dtime(17, 0, 0)
-STANDARD_HOURS  = 8.0
-LATE_GRACE_MINS = 10
-EARLY_EXIT_MINS = 15
+# ── Shift configuration ─────────────────────────────────────────────────────
+SHIFT_IN_TIME      = dtime(7, 30, 0)   # 07:30 — Mon to Sat
+SHIFT_OUT_TIME     = dtime(17, 0,  0)  # 17:00 — Mon to Fri
+SHIFT_OUT_SAT      = dtime(13, 0,  0)  # 13:00 — Saturday
+STANDARD_HOURS     = 9.5               # 07:30–17:00 Mon–Fri
+STANDARD_HOURS_SAT = 5.5               # 07:30–13:00 Saturday
+LATE_GRACE_MINS    = 10
+EARLY_EXIT_MINS    = 15
+
 
 def get_columns(filters):
     mode = (filters or {}).get("report_mode", "Summary")
@@ -44,6 +48,7 @@ def get_columns(filters):
         ]
     return base
 
+
 def execute(filters=None):
     if not filters:
         filters = {}
@@ -64,6 +69,7 @@ def execute(filters=None):
     summary = _get_summary_cards(data, mode)
     return columns, data, None, chart, summary
 
+
 def _validate_filters(filters):
     if not filters.get("from_date") or not filters.get("to_date"):
         frappe.throw(_("Both From Date and To Date are required."))
@@ -71,6 +77,7 @@ def _validate_filters(filters):
         frappe.throw(_("From Date cannot be after To Date."))
     if date_diff(filters["to_date"], filters["from_date"]) > 365:
         frappe.throw(_("Date range cannot exceed 366 days."))
+
 
 def _get_employees(filters):
     conds = {"status": "Active"}
@@ -80,14 +87,18 @@ def _get_employees(filters):
         conds["department"] = filters["department"]
     if filters.get("site") and frappe.db.has_column("Employee", "branch"):
         conds["branch"] = filters["site"]
-    return frappe.get_all("Employee", filters=conds,
+    return frappe.get_all(
+        "Employee", filters=conds,
         fields=["name", "employee_name", "department", "designation", "holiday_list", "default_shift"],
-        order_by="employee_name")
+        order_by="employee_name"
+    )
+
 
 def _get_checkins(employee_ids, from_date, to_date):
     if not employee_ids:
         return []
-    return frappe.db.sql("""
+    return frappe.db.sql(
+        """
         SELECT ec.employee, ec.employee_name,
                DATE(ec.time) AS attendance_date,
                TIME(ec.time) AS punch_time,
@@ -95,9 +106,12 @@ def _get_checkins(employee_ids, from_date, to_date):
         FROM `tabEmployee Checkin` ec
         WHERE ec.employee IN %(employees)s
           AND DATE(ec.time) BETWEEN %(from_date)s AND %(to_date)s
-        ORDER BY ec.employee, ec.time""",
+        ORDER BY ec.employee, ec.time
+        """,
         {"employees": employee_ids, "from_date": from_date, "to_date": to_date},
-        as_dict=True)
+        as_dict=True,
+    )
+
 
 def _get_holiday_set(employees, from_date, to_date):
     holiday_dates = set()
@@ -114,15 +128,18 @@ def _get_holiday_set(employees, from_date, to_date):
             holiday_dates.add(getdate(r["holiday_date"]))
     return holiday_dates
 
+
 def _build_working_days_set(from_date, to_date, holidays):
+    """Mon–Sat are working days. Sunday (weekday=6) is rest."""
     working = set()
     cur = getdate(from_date)
     end = getdate(to_date)
     while cur <= end:
-        if cur.weekday() < 5 and cur not in holidays:
+        if cur.weekday() < 6 and cur not in holidays:  # 0=Mon … 5=Sat, 6=Sun
             working.add(cur)
         cur += timedelta(days=1)
     return working
+
 
 def _build_daily_map(checkins):
     buckets = {}
@@ -135,54 +152,74 @@ def _build_daily_map(checkins):
             buckets[key]["ins"].append(t)
         elif row["log_type"] == "OUT":
             buckets[key]["outs"].append(t)
+
     result = {}
     for (emp, att_date), b in buckets.items():
         ins  = sorted(b["ins"])
         outs = sorted(b["outs"])
         first_in = ins[0]   if ins  else None
         last_out = outs[-1] if outs else None
+
+        # Determine if Saturday
+        d = getdate(att_date)
+        is_saturday     = d.weekday() == 5
+        shift_out       = SHIFT_OUT_SAT   if is_saturday else SHIFT_OUT_TIME
+        std_hrs         = STANDARD_HOURS_SAT if is_saturday else STANDARD_HOURS
+
+        # Work hours
         work_hours = 0.0
         if first_in and last_out:
             base   = date(2000, 1, 1)
             dt_in  = datetime.combine(base, first_in)
             dt_out = datetime.combine(base, last_out)
             work_hours = max((dt_out - dt_in).total_seconds() / 3600, 0)
+
+        # Late entry (grace applied)
         late_entry = False
         late_by_mins = 0
         if first_in:
             threshold_in = datetime.combine(date.today(), SHIFT_IN_TIME) + timedelta(minutes=LATE_GRACE_MINS)
-            actual_in = datetime.combine(date.today(), first_in)
+            actual_in    = datetime.combine(date.today(), first_in)
             if actual_in > threshold_in:
-                late_entry = True
+                late_entry   = True
                 late_by_mins = int((actual_in - datetime.combine(date.today(), SHIFT_IN_TIME)).total_seconds() / 60)
+
+        # Early exit
         early_exit = False
         early_by_mins = 0
         if last_out:
-            threshold_out = datetime.combine(date.today(), SHIFT_OUT_TIME) - timedelta(minutes=EARLY_EXIT_MINS)
-            actual_out = datetime.combine(date.today(), last_out)
+            threshold_out = datetime.combine(date.today(), shift_out) - timedelta(minutes=EARLY_EXIT_MINS)
+            actual_out    = datetime.combine(date.today(), last_out)
             if actual_out < threshold_out:
-                early_exit = True
-                early_by_mins = int((datetime.combine(date.today(), SHIFT_OUT_TIME) - actual_out).total_seconds() / 60)
+                early_exit    = True
+                early_by_mins = int((datetime.combine(date.today(), shift_out) - actual_out).total_seconds() / 60)
+
+        # Missing punch
         missing_punch = (not ins) or (not outs)
         if not ins and outs:       missing_type = "Missing IN"
         elif ins and not outs:     missing_type = "Missing OUT"
         elif not ins and not outs: missing_type = "No punches"
         else:                      missing_type = ""
-        overtime_h = max(work_hours - STANDARD_HOURS, 0) if work_hours else 0.0
+
+        # Overtime — hours beyond standard for that day
+        overtime_h = max(work_hours - std_hrs, 0) if work_hours else 0.0
+
         result[(emp, att_date)] = {
-            "employee_name": b["employee_name"],
-            "first_in":      _fmt_time(first_in),
-            "last_out":      _fmt_time(last_out),
-            "work_hours":    flt(work_hours, 2),
-            "overtime_hours":flt(overtime_h, 2),
-            "late_entry":    late_entry,
-            "late_by_mins":  late_by_mins,
-            "early_exit":    early_exit,
-            "early_by_mins": early_by_mins,
-            "missing_punch": missing_punch,
-            "missing_type":  missing_type,
+            "employee_name":  b["employee_name"],
+            "first_in":       _fmt_time(first_in),
+            "last_out":       _fmt_time(last_out),
+            "work_hours":     flt(work_hours, 2),
+            "overtime_hours": flt(overtime_h, 2),
+            "late_entry":     late_entry,
+            "late_by_mins":   late_by_mins,
+            "early_exit":     early_exit,
+            "early_by_mins":  early_by_mins,
+            "missing_punch":  missing_punch,
+            "missing_type":   missing_type,
+            "is_saturday":    is_saturday,
         }
     return result
+
 
 def _build_detail_rows(employees, daily_map, working_days):
     rows = []
@@ -190,11 +227,13 @@ def _build_detail_rows(employees, daily_map, working_days):
         emp_id = emp["name"]
         for day in sorted(working_days):
             punch = daily_map.get((emp_id, day))
+            day_label = "Sat" if day.weekday() == 5 else day.strftime("%a")
+
             if punch:
                 late_lbl    = f"+{punch['late_by_mins']}m"  if punch["late_entry"]    else "On time"
                 early_lbl   = f"-{punch['early_by_mins']}m" if punch["early_exit"]    else "Normal"
                 missing_lbl = punch["missing_type"]          if punch["missing_punch"] else "-"
-                wh, oth = punch["work_hours"], punch["overtime_hours"]
+                wh, oth     = punch["work_hours"], punch["overtime_hours"]
                 if punch["missing_punch"]:                        status = "Incomplete"
                 elif punch["late_entry"] and punch["early_exit"]: status = "Late + Early"
                 elif punch["late_entry"]:                         status = "Late"
@@ -205,11 +244,12 @@ def _build_detail_rows(employees, daily_map, working_days):
                 late_lbl = early_lbl = missing_lbl = "-"
                 wh = oth = 0.0
                 status = "Absent"
+
             rows.append({
                 "employee":       emp_id,
                 "employee_name":  emp["employee_name"],
                 "attendance_date":str(day),
-                "day_name":       day.strftime("%a"),
+                "day_name":       day_label,
                 "first_in":       punch["first_in"]  if punch else "-",
                 "last_out":       punch["last_out"]  if punch else "-",
                 "work_hours":     wh,
@@ -220,6 +260,7 @@ def _build_detail_rows(employees, daily_map, working_days):
                 "day_status":     status,
             })
     return rows
+
 
 def _build_summary_rows(employees, daily_map, working_days):
     rows = []
@@ -266,6 +307,7 @@ def _build_summary_rows(employees, daily_map, working_days):
     rows.sort(key=lambda x: x["attendance_pct"])
     return rows
 
+
 def _get_chart(data, mode):
     if not data:
         return None
@@ -275,8 +317,10 @@ def _get_chart(data, mode):
         for r in data:
             by_emp.setdefault(r["employee_name"], {})
             by_emp[r["employee_name"]][r["attendance_date"]] = flt(r.get("work_hours", 0))
-        datasets = [{"name": name, "values": [hrs.get(d, 0) for d in all_dates], "chartType": "bar"}
-                    for name, hrs in by_emp.items()]
+        datasets = [
+            {"name": name, "values": [hrs.get(d, 0) for d in all_dates], "chartType": "bar"}
+            for name, hrs in by_emp.items()
+        ]
         return {"data": {"labels": all_dates, "datasets": datasets}, "type": "bar", "height": 280, "title": "Daily Work Hours by Employee"}
     labels = [r["employee_name"] for r in data]
     return {
@@ -286,8 +330,10 @@ def _get_chart(data, mode):
             {"name": "Missing Punch", "values": [r["missing_punches"] for r in data], "chartType": "bar"},
             {"name": "OT Hours",      "values": [r["overtime_hours"]  for r in data], "chartType": "line"},
         ]},
-        "type": "bar", "colors": ["#2ecc71", "#e74c3c", "#f39c12", "#3498db"], "height": 280, "title": "Biometric Attendance Summary",
+        "type": "bar", "colors": ["#2ecc71", "#e74c3c", "#f39c12", "#3498db"],
+        "height": 280, "title": "Biometric Attendance Summary",
     }
+
 
 def _get_summary_cards(data, mode):
     if not data:
@@ -316,6 +362,7 @@ def _get_summary_cards(data, mode):
          "label": _("Need Attention"), "indicator": "Red" if any(r["status_summary"] == "Needs Attention" for r in data) else "Green", "datatype": "Int"},
     ]
 
+
 def _to_time(t):
     if isinstance(t, dtime):
         return t
@@ -330,6 +377,7 @@ def _to_time(t):
         m, s = divmod(r, 60)
         return dtime(h % 24, m, s)
     return dtime(0, 0, 0)
+
 
 def _fmt_time(t):
     if t is None:
