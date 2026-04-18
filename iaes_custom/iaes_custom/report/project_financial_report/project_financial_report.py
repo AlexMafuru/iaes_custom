@@ -259,4 +259,4 @@ def get_chart(data):
         "barOptions": {"stacked": 0},
         "axisOptions": {"xIsSeries": True},
         "height": 280,
-    }
+    }   

@@ -1,0 +1,14 @@
+{
+    "creation": "2026-04-19 00:00:00.000000",
+    "docstatus": 0,
+    "doctype": "Client Script",
+    "dt": "List View",
+    "enabled": 1,
+    "modified": "2026-04-19 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Iaes Custom",
+    "name": "list_filter_patch",
+    "owner": "Administrator",
+    "script": "",
+    "script_type": "Client"
+}
