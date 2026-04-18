@@ -18,9 +18,16 @@
  "ref_doctype": "Employee Checkin",
  "report_name": "Remote Site Attendance Analysis",
  "report_type": "Script Report",
+ "report_script": "",
  "roles": [
-  {"role": "HR Manager"},
-  {"role": "HR User"},
-  {"role": "System Manager"}
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  },
+  {
+   "role": "System Manager"
+  }
  ]
 }
