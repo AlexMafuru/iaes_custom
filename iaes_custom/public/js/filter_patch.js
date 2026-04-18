@@ -1,39 +1,34 @@
 frappe.after_ajax(function () {
+    if (!frappe.ui || !frappe.ui.Filter) return;
+    if (frappe.ui.Filter.prototype._iaestz_v2) return;
+    frappe.ui.Filter.prototype._iaestz_v2 = true;
 
-    function patch_filter_options(proto) {
-        if (!proto || proto._iaestz_patched) return;
-        proto._iaestz_patched = true;
+    const original_make_select = frappe.ui.Filter.prototype.make_select;
 
-        const original = proto.get_filter_options;
-        if (!original) return;
+    frappe.ui.Filter.prototype.make_select = function () {
+        original_make_select.call(this);
 
-        proto.get_filter_options = function (fieldtype) {
-            let result = original.call(this, fieldtype);
+        const target_types = [
+            "Data", "Small Text", "Text",
+            "Long Text", "Link", "Dynamic Link"
+        ];
 
-            const target_types = [
-                "Data", "Small Text", "Text",
-                "Long Text", "Link", "Dynamic Link"
-            ];
+        if (target_types.includes(this.fieldtype)) {
+            const extras = [">=", "<=", ">", "<"];
+            const select = this.field && this.field.$select;
+            if (!select) return;
 
-            if (target_types.includes(fieldtype)) {
-                const extras = [">=", "<=", ">", "<"];
-                extras.forEach(op => {
-                    if (!result.includes(op)) {
-                        const idx = result.indexOf("!=");
-                        if (idx !== -1) {
-                            result.splice(idx + 1, 0, op);
-                        } else {
-                            result.push(op);
-                        }
+            extras.forEach(op => {
+                const exists = select.find(`option[value="${op}"]`).length;
+                if (!exists) {
+                    const notEquals = select.find('option[value="!="]');
+                    if (notEquals.length) {
+                        notEquals.after(`<option value="${op}">${op}</option>`);
+                    } else {
+                        select.append(`<option value="${op}">${op}</option>`);
                     }
-                });
-            }
-            return result;
-        };
-    }
-
-    if (frappe.ui) {
-        if (frappe.ui.FilterList) patch_filter_options(frappe.ui.FilterList.prototype);
-        if (frappe.ui.Filter) patch_filter_options(frappe.ui.Filter.prototype);
-    }
+                }
+            });
+        }
+    };
 });
