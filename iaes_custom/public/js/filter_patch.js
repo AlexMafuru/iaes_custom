@@ -1,35 +1,29 @@
-frappe.after_ajax(function () {
-    if (!frappe.ui || !frappe.ui.Filter) return;
-    if (frappe.ui.Filter.prototype._iaestz_v2) return;
-    frappe.ui.Filter.prototype._iaestz_v2 = true;
+(function() {
+    function addComparisonOptions(selectEl) {
+        const options = Array.from(selectEl.options).map(o => o.value);
+        if (options.includes(">=")) return;
+        
+        const notEqIndex = options.indexOf("!=");
+        const extras = [">", "<", ">=", "<="];
+        
+        extras.forEach(op => {
+            const opt = new Option(op, op);
+            if (notEqIndex !== -1) {
+                selectEl.add(opt, notEqIndex + 1);
+            } else {
+                selectEl.add(opt);
+            }
+        });
+    }
 
-    const original_make_select = frappe.ui.Filter.prototype.make_select;
-
-    frappe.ui.Filter.prototype.make_select = function () {
-        original_make_select.call(this);
-
-        const target_types = [
-            "Data", "Small Text", "Text",
-            "Long Text", "Link", "Dynamic Link"
-        ];
-
-        if (target_types.includes(this.fieldtype)) {
-            const extras = [">=", "<=", ">", "<"];
-            const select = this.field && this.field.$select;
-            if (!select) return;
-
-            extras.forEach(op => {
-                const exists = select.find(`option[value="${op}"]`).length;
-                if (!exists) {
-                    const notEquals = select.find('option[value="!="]');
-                    if (notEquals.length) {
-                        notEquals.after(`<option value="${op}">${op}</option>`);
-                    } else {
-                        select.append(`<option value="${op}">${op}</option>`);
-                    }
-                }
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+                if (!node.querySelectorAll) return;
+                node.querySelectorAll('.filter-field select, .filter-list select').forEach(addComparisonOptions);
             });
-        }
-    };
-});
-// v2 - make_select patch
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
