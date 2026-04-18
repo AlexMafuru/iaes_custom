@@ -38,7 +38,7 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
             fieldname: "site",
             label: __("Site / Branch"),
             fieldtype: "Data",
-            default: "Remote Site",
+            default: "NMB",
         },
         {
             fieldname: "report_mode",
