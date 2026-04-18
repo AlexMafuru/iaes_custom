@@ -32,3 +32,4 @@ frappe.after_ajax(function () {
         }
     };
 });
+// v2 - make_select patch
