@@ -18,4 +18,4 @@ frappe.after_ajax(function () {
             }
         });
     };
-});
+});// v5 - 1776627305
