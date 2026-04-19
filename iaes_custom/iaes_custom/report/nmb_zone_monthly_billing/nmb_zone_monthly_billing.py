@@ -18,6 +18,22 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+# -- HTML stripper -----------------------------------------------------------
+import re as _re
+
+def _strip_html(text):
+    if not text:
+        return ""
+    text = _re.sub(r'<[^>]+>', ' ', str(text))
+    text = text.replace('&amp;','&').replace('&lt;','<').replace('&gt;','>').replace('&nbsp;',' ').replace('&#39;',"'").replace('&quot;','"')
+    return ' '.join(text.split())
+
+
+# -- HTML stripper -----------------------------------------------------------
+import re as _re
+
+
+
 # -- Contract rates (Award Letter) -------------------------------------------
 SERVICE_CALL_RATE   = 200_000
 POWER_AUDIT_RATE    = 650_000
@@ -435,7 +451,7 @@ def _get_expense_claim_materials(project, from_date, to_date):
             result.append({
                 "date": pd_, "month": _month_label(pd_),
                 "task": claim.get("task") or "",
-                "item_name": d.description,
+                "item_name": _strip_html(d.description),
                 "expense_type": d.expense_type,
                 "qty": 1, "unit": "Item",
                 "rate": contract_rate or amt,
@@ -555,10 +571,10 @@ def create_sales_invoice(filters):
         if not flt(row.get("amount")):
             continue
         si.append("items", {
-            "item_name":      row.get("branch_name", "Electrical Service"),
+            "item_name":      _strip_html(row.get("branch_name", "Electrical Service")),
             "description":    "{} | {}".format(
                                   row.get("task", ""),
-                                  row.get("fault_reported", "")),
+                                  _strip_html(row.get("fault_reported", "")),
             "qty":            row.get("qty") or 1,
             "rate":           row.get("rate") or row.get("amount"),
             "income_account": INCOME_ACCOUNT,
