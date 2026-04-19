@@ -427,7 +427,7 @@ def _get_expense_claim_materials(project, from_date, to_date):
             fields=["expense_type", "description", "amount", "sanctioned_amount"],
         )
         for d in details:
-            if (d.expense_type or "").strip().lower() != "materials":
+            if (d.expense_type or "").strip().lower() != "material":
                 continue
             pd_           = claim.posting_date
             contract_rate = get_contract_rate(d.description)
