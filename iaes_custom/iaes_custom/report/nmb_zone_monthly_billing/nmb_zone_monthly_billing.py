@@ -574,7 +574,7 @@ def create_sales_invoice(filters):
             "item_name":      _strip_html(row.get("branch_name", "Electrical Service")),
             "description":    "{} | {}".format(
                                   row.get("task", ""),
-                                  _strip_html(row.get("fault_reported", "")),
+                                  _strip_html(row.get("fault_reported", ""))),
             "qty":            row.get("qty") or 1,
             "rate":           row.get("rate") or row.get("amount"),
             "income_account": INCOME_ACCOUNT,
