@@ -137,13 +137,12 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "Purchase Invoice": {
+        "on_submit": "iaes_custom.iaes_custom.hooks_pinv_task.on_pinv_submit",
+        "on_cancel":  "iaes_custom.iaes_custom.hooks_pinv_task.on_pinv_cancel",
+    }
+}
 
 # Scheduled Tasks
 # ---------------
@@ -252,4 +251,8 @@ app_include_js = [
     "/assets/iaes_custom/js/filter_patch.js"
 ]
 
-fixtures = [{"doctype": "Report", "filters": [["report_name", "=", "Project Financial Report"]]}]
+fixtures = [
+    {"doctype": "Report", "filters": [["report_name", "=", "Project Financial Report"]]},
+    {"dt": "Custom Field", "filters": [["module", "=", "IAES Custom"]]},
+    {"dt": "Client Script", "filters": [["module", "=", "IAES Custom"]]},
+]

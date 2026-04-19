@@ -1,0 +1,58 @@
+[
+  {
+    "doctype": "Custom Field",
+    "name": "Purchase Invoice-pinv_task_section",
+    "dt": "Purchase Invoice",
+    "fieldname": "pinv_task_section",
+    "fieldtype": "Section Break",
+    "label": "NMB Zone Task Linkage",
+    "module": "IAES Custom",
+    "insert_after": "project",
+    "collapsible": 0
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Purchase Invoice-task",
+    "dt": "Purchase Invoice",
+    "fieldname": "task",
+    "fieldtype": "Link",
+    "options": "Task",
+    "label": "Task (NMB Zone Visit)",
+    "module": "IAES Custom",
+    "insert_after": "pinv_task_section",
+    "in_list_view": 0,
+    "bold": 1,
+    "search_index": 1,
+    "reqd": 0,
+    "description": "Links this Purchase Invoice to a specific NMB Zone Task. Appears in Task Connections panel automatically. Auto-fills Project."
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Purchase Invoice-task_details_html",
+    "dt": "Purchase Invoice",
+    "fieldname": "task_details_html",
+    "fieldtype": "HTML",
+    "label": "Task Details",
+    "module": "IAES Custom",
+    "insert_after": "task",
+    "read_only": 1,
+    "print_hide": 1,
+    "description": "Read-only banner showing branch, fault, zone and status of the linked Task. Auto-populated by client script."
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Purchase Invoice Item-task",
+    "dt": "Purchase Invoice Item",
+    "fieldname": "task",
+    "fieldtype": "Link",
+    "options": "Task",
+    "label": "Task",
+    "module": "IAES Custom",
+    "insert_after": "project",
+    "in_list_view": 1,
+    "bold": 0,
+    "search_index": 1,
+    "reqd": 0,
+    "description": "Override per line item if this item belongs to a different Task than the header. Leave blank to inherit the header Task."
+  }
+]

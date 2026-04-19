@@ -1,0 +1,41 @@
+[
+  {
+    "doctype": "Custom Field",
+    "name": "Task-custom_cost_section",
+    "dt": "Task",
+    "fieldname": "custom_cost_section",
+    "fieldtype": "Section Break",
+    "label": "IAES Cost Tracking",
+    "module": "IAES Custom",
+    "insert_after": "actual_expense",
+    "collapsible": 0
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Task-custom_pinv_total",
+    "dt": "Task",
+    "fieldname": "custom_pinv_total",
+    "fieldtype": "Currency",
+    "label": "Purchase Invoice Total (TZS)",
+    "module": "IAES Custom",
+    "insert_after": "custom_cost_section",
+    "read_only": 1,
+    "bold": 0,
+    "in_list_view": 0,
+    "description": "Sum of submitted Purchase Invoice amounts linked to this Task. Auto-updated by hooks_pinv_task.py on PINV submit/cancel."
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Task-custom_combined_cost",
+    "dt": "Task",
+    "fieldname": "custom_combined_cost",
+    "fieldtype": "Currency",
+    "label": "Total Cost (EC + PINV)",
+    "module": "IAES Custom",
+    "insert_after": "custom_pinv_total",
+    "read_only": 1,
+    "bold": 1,
+    "in_list_view": 0,
+    "description": "Expense Claim total (actual_expense) + Purchase Invoice total. Auto-updated by hooks_pinv_task.py. Complete cost per Task/visit."
+  }
+]
