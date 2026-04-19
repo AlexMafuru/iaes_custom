@@ -259,7 +259,7 @@ def get_data(filters):
         "Task",
         filters=task_filters,
         fields=["name", "subject", "status", "type",
-                "exp_end_date", "actual_start_date"],
+                "exp_end_date", "act_start_date"],
         order_by="exp_end_date asc, name asc",
     )
 
@@ -273,7 +273,7 @@ def get_data(filters):
                         for kw in ("power audit", "audit"))
         rate      = POWER_AUDIT_RATE if is_audit else SERVICE_CALL_RATE
         category  = "Power Audit"   if is_audit else "Service call"
-        task_date = task.exp_end_date or task.actual_start_date
+        task_date = task.exp_end_date or task.act_start_date
         meta      = task_meta.get(task.name, {})
         sno += 1
         callout_total += rate
