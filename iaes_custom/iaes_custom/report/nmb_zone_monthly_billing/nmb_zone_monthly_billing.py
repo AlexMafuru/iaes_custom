@@ -231,7 +231,7 @@ def get_columns():
         C("Zone",           "zone",          "Data",     80),
         C("Assigned To",    "assigned_to",   "Data",    160),
         C("Attachment",     "attachment",    "Data",     95),
-        C("row_type",       "row_type",      "Data",      0),  # hidden, drives JS formatter
+        C("row_type",       "row_type",      "Data",      0,   hidden=1),
     ]
 
 
@@ -253,7 +253,7 @@ def get_data(filters):
     task_filters = {"project": project}
     task_filters.update(_date_filter("exp_end_date", from_date, to_date))
     if zone_filter:
-        task_filters["type"] = zone_filter
+        task_filters["type"] = ["like", "%{}%".format(zone_filter)]
 
     tasks = frappe.get_all(
         "Task",
@@ -385,15 +385,40 @@ def get_data(filters):
 # -- Data fetchers ------------------------------------------------------------
 
 def _get_expense_claim_materials(project, from_date, to_date):
-    """Expense Claim lines where expense_type = 'Materials' for this project."""
-    ec_filters = {"project": project, "docstatus": 1}
-    ec_filters.update(_date_filter("posting_date", from_date, to_date))
-
-    claims = frappe.get_all(
-        "Expense Claim",
-        filters=ec_filters,
-        fields=["name", "posting_date", "task", "project"],
+    """
+    Expense Claim lines with expense_type = Materials.
+    Searches by project field AND by all tasks belonging to the project,
+    because some ECs are only linked via task (not directly to project).
+    """
+    # Get all task names in this project
+    project_tasks = frappe.get_all(
+        "Task",
+        filters={"project": project},
+        pluck="name",
     )
+
+    # Query 1: ECs linked directly to project
+    ec_filters_proj = {"project": project, "docstatus": 1}
+    ec_filters_proj.update(_date_filter("posting_date", from_date, to_date))
+
+    # Query 2: ECs linked via task (task in project tasks)
+    ec_filters_task = {"docstatus": 1}
+    ec_filters_task.update(_date_filter("posting_date", from_date, to_date))
+    if project_tasks:
+        ec_filters_task["task"] = ["in", project_tasks]
+
+    seen = set()
+    claims = []
+    for ec_filters in [ec_filters_proj, ec_filters_task]:
+        rows = frappe.get_all(
+            "Expense Claim",
+            filters=ec_filters,
+            fields=["name", "posting_date", "task", "project"],
+        )
+        for r in rows:
+            if r.name not in seen:
+                seen.add(r.name)
+                claims.append(r)
     result = []
     for claim in claims:
         details = frappe.get_all(
