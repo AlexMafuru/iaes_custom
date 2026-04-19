@@ -110,9 +110,11 @@
 	function start_global_id_buttons() {
 		try_attach_buttons();
 
-		let lastRoute = frappe.get_route_str ? frappe.get_route_str() : "";
+let lastRoute = "";
+try { lastRoute = frappe.get_route_str ? frappe.get_route_str() : ""; } catch(e) {}
 		setInterval(() => {
-			const currentRoute = frappe.get_route_str ? frappe.get_route_str() : "";
+let currentRoute = "";
+try { currentRoute = frappe.get_route_str ? frappe.get_route_str() : ""; } catch(e) {}
 			if (currentRoute !== lastRoute) {
 				lastRoute = currentRoute;
 				setTimeout(try_attach_buttons, 400);
