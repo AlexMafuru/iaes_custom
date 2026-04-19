@@ -544,10 +544,10 @@ def create_sales_invoice(filters):
     _, data = execute(filters)
 
     si              = frappe.new_doc("Sales Invoice")
-    si.customer     = "NMB Bank Plc"   # <-- update to your ERPNext customer name
+    si.customer     = "NMB BANK PLC"   # <-- update to your ERPNext customer name
     si.project      = filters.get("project")
     si.due_date     = frappe.utils.add_days(frappe.utils.today(), 30)
-    INCOME_ACCOUNT  = "Income - IAES"  # <-- update to your Chart of Accounts
+    INCOME_ACCOUNT  = "Service - IAES"  # <-- update to your Chart of Accounts
 
     for row in data:
         if row.get("row_type") != "detail":
