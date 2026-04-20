@@ -481,6 +481,10 @@ def _get_pinv_materials(project, from_date, to_date):
         {"dt": "Purchase Invoice Item", "fieldname": "task"}
     )
     extra_fields = ["task"] if has_task_field else []
+    EXCLUDE_GROUPS = {
+        "motor vehicle", "vehicle", "car hire", "transport vehicle",
+        "food", "meals", "accommodation", "stationery", "office supplies",
+    }
 
     result = []
     for inv in invoices:
@@ -491,11 +495,18 @@ def _get_pinv_materials(project, from_date, to_date):
                     "rate", "amount", "description"] + extra_fields,
         )
         for it in items:
+            # Skip non-electrical items (car hire, food, etc.)
+            if any(x in (it.item_group or '').lower() for x in EXCLUDE_GROUPS):
+                continue
+            # Skip zero-amount lines
+            if not flt(it.amount):
+                continue
             pd_    = inv.posting_date
             c_rate = get_contract_rate(it.item_name or it.item_code or it.description)
             qty    = flt(it.qty) or 1
             rate   = c_rate if c_rate else flt(it.rate)
-            amt    = rate * qty
+            # Use actual PINV amount to capture all items regardless of price map
+            amt    = flt(it.amount)
             result.append({
                 "date": pd_, "month": _month_label(pd_),
                 "task": it.get("task") or "",
