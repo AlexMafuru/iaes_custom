@@ -344,7 +344,7 @@ def get_data(filters):
             rows.append({
                 "sno": sno, "date": it.get("date"), "month": it.get("month", ""),
                 "task": task_ref if task_ref.upper().startswith("TASK") else "",
-                "branch_name": it.get("item_name", it.get("description", "")),
+                "branch_name": _strip_html(it.get("item_name", it.get("description", ""))),
                 "fault_reported": it.get("expense_type", it.get("item_group", "Materials")),
                 "category": "materials", "unit": it.get("unit", "pcs"),
                 "qty": flt(it.get("qty", 1)), "rate": flt(it.get("rate", 0)),
@@ -501,7 +501,7 @@ def _get_pinv_materials(project, from_date, to_date):
                 "task": it.get("task") or "",
                 "item_name": it.item_name or it.item_code,
                 "item_group": it.item_group,
-                "description": it.description or it.item_name,
+                "description": _strip_html(it.description or it.item_name or ""),
                 "qty": qty, "unit": it.uom or "pcs",
                 "rate": rate, "amount": amt,
                 "source": "Purchase Invoice",
