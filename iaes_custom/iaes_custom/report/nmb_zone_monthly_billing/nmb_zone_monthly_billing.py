@@ -401,7 +401,7 @@ def get_data(filters):
 # -- Data fetchers ------------------------------------------------------------
 
 def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
-    """
+    """Expense Claim lines with expense_type = Material for this project."""
     # Zone filter: restrict to tasks in selected zone only
     allowed_tasks = None
     if zone_filter:
@@ -410,10 +410,7 @@ def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
             filters={"project": project, "type": ["like", "%{}%".format(zone_filter)]},
             pluck="name",
         ))
-    Expense Claim lines with expense_type = Materials.
-    Searches by project field AND by all tasks belonging to the project,
-    because some ECs are only linked via task (not directly to project).
-    """
+
     # Get all task names in this project
     project_tasks = frappe.get_all(
         "Task",
@@ -425,7 +422,7 @@ def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
     ec_filters_proj = {"project": project, "docstatus": 1}
     ec_filters_proj.update(_date_filter("posting_date", from_date, to_date))
 
-    # Query 2: ECs linked via task (task in project tasks)
+    # Query 2: ECs linked via task
     ec_filters_task = {"docstatus": 1}
     ec_filters_task.update(_date_filter("posting_date", from_date, to_date))
     if project_tasks:
@@ -443,15 +440,17 @@ def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
             if r.name not in seen:
                 seen.add(r.name)
                 claims.append(r)
+
     result = []
     for claim in claims:
-        # Skip claims whose task is not in the allowed zone
+        # Zone filter: skip ECs whose task is not in the allowed zone
         if allowed_tasks is not None:
             claim_task = claim.get("task") or ""
-            if claim_task and claim_task not in allowed_tasks:
-                continue
             if not claim_task:
-                continue  # no task link means we can't verify zone — skip
+                continue
+            if claim_task not in allowed_tasks:
+                continue
+
         details = frappe.get_all(
             "Expense Claim Detail",
             filters={"parent": claim.name},
