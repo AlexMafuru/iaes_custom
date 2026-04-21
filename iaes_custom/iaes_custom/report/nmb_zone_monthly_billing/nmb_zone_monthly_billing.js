@@ -100,6 +100,21 @@ frappe.query_reports["NMB Zone Monthly Billing"] = {
             }
         }
 
+        // Source Doc: clickable link to Expense Claim or Purchase Invoice
+        if (column.fieldname === "source_doc" && type === "detail") {
+            if (!value) return "";
+            const parts  = value.split(":");
+            if (parts.length < 2) return value;
+            const doctype = parts[0];
+            const docname = parts.slice(1).join(":");
+            const route   = `/app/${doctype.toLowerCase().replace(/ /g, "-")}/${docname}`;
+            const icon    = doctype === "Expense Claim" ? "\u{1F4CB}" : "\u{1F9FE}";
+            const color   = doctype === "Expense Claim" ? "#1a6b3a" : "#1a3a6b";
+            return `<a href="${route}" target="_blank"
+                       style="color:${color};font-weight:600;text-decoration:none;font-size:11px;">
+                       ${icon} ${docname}</a>`;
+        }
+
         return value;
     },
 

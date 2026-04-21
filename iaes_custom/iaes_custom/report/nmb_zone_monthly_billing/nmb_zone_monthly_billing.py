@@ -134,7 +134,7 @@ def _subtotal_row(label, amount, indent=""):
         "fault_reported": "", "category": "", "unit": "",
         "qty": None, "rate": None, "amount": amount,
         "task_status": "", "zone": "",
-        "assigned_to": "", "attachment": "",
+        "assigned_to": "", "attachment": "", "source_doc": "",
         "row_type": label.lower().replace(" ", "_"),
     }
 
@@ -247,6 +247,7 @@ def get_columns():
         C("Zone",           "zone",          "Data",     80),
         C("Assigned To",    "assigned_to",   "Data",    160),
         C("Attachment",     "attachment",    "Data",     95),
+        C("Source Doc",     "source_doc",    "Data",    140),
         C("row_type",       "row_type",      "Data",      0,   hidden=1),
     ]
 
@@ -300,6 +301,7 @@ def get_data(filters):
             "amount": rate, "task_status": task.status, "zone": task.type or "",
             "assigned_to": meta.get("assigned_to", ""),
             "attachment":  meta.get("attachment", ""),
+            "source_doc":  "Task:{}".format(task.name),
             "row_type": "detail",
         })
 
@@ -351,6 +353,7 @@ def get_data(filters):
                 "amount": flt(it["amount"]),
                 "task_status": task_status, "zone": task_zone,
                 "assigned_to": "", "attachment": "",
+                "source_doc": it.get("source_doc", ""),
                 "row_type": "detail",
             })
 
@@ -369,6 +372,7 @@ def get_data(filters):
             "fault_reported": "", "category": "Labour", "unit": "Item",
             "qty": 1, "rate": rewiring_labour, "amount": rewiring_labour,
             "task_status": "", "zone": "", "assigned_to": "", "attachment": "",
+            "source_doc": "",
             "row_type": "detail",
         })
 
@@ -383,6 +387,7 @@ def get_data(filters):
             "fault_reported": "", "category": "Transport", "unit": "Item",
             "qty": 1, "rate": transport, "amount": transport,
             "task_status": "", "zone": "", "assigned_to": "", "attachment": "",
+            "source_doc": "",
             "row_type": "detail",
         })
 
@@ -471,6 +476,7 @@ def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
                 "rate": contract_rate or amt,
                 "amount": amt,
                 "source": "Expense Claim",
+                "source_doc": "Expense Claim:{}".format(claim.name),
             })
     return result
 
@@ -546,6 +552,7 @@ def _get_pinv_materials(project, from_date, to_date, zone_filter=None):
                 "qty": qty, "unit": it.uom or "pcs",
                 "rate": rate, "amount": amt,
                 "source": "Purchase Invoice",
+                "source_doc": "Purchase Invoice:{}".format(inv.name),
             })
     return result
 
