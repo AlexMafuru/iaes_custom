@@ -309,8 +309,8 @@ def get_data(filters):
     rows.append({**_subtotal_row("-- SECTION 2: PARTS REPLACEMENTS --", None),
                  "row_type": "section_header"})
 
-    exp_materials  = _get_expense_claim_materials(project, from_date, to_date)
-    pinv_materials = _get_pinv_materials(project, from_date, to_date)
+    exp_materials  = _get_expense_claim_materials(project, from_date, to_date, zone_filter)
+    pinv_materials = _get_pinv_materials(project, from_date, to_date, zone_filter)
 
     # Group by task (or project if task unknown)
     by_task = {}
@@ -400,8 +400,16 @@ def get_data(filters):
 
 # -- Data fetchers ------------------------------------------------------------
 
-def _get_expense_claim_materials(project, from_date, to_date):
+def _get_expense_claim_materials(project, from_date, to_date, zone_filter=None):
     """
+    # Zone filter: restrict to tasks in selected zone only
+    allowed_tasks = None
+    if zone_filter:
+        allowed_tasks = set(frappe.get_all(
+            "Task",
+            filters={"project": project, "type": ["like", "%{}%".format(zone_filter)]},
+            pluck="name",
+        ))
     Expense Claim lines with expense_type = Materials.
     Searches by project field AND by all tasks belonging to the project,
     because some ECs are only linked via task (not directly to project).
@@ -437,6 +445,13 @@ def _get_expense_claim_materials(project, from_date, to_date):
                 claims.append(r)
     result = []
     for claim in claims:
+        # Skip claims whose task is not in the allowed zone
+        if allowed_tasks is not None:
+            claim_task = claim.get("task") or ""
+            if claim_task and claim_task not in allowed_tasks:
+                continue
+            if not claim_task:
+                continue  # no task link means we can't verify zone — skip
         details = frappe.get_all(
             "Expense Claim Detail",
             filters={"parent": claim.name},
@@ -461,12 +476,21 @@ def _get_expense_claim_materials(project, from_date, to_date):
     return result
 
 
-def _get_pinv_materials(project, from_date, to_date):
+def _get_pinv_materials(project, from_date, to_date, zone_filter=None):
     """
     Purchase Invoice items linked to the project.
     Uses per-line task field if the custom field exists,
     otherwise attributes the item to the header project.
+    When zone_filter set, only includes items linked to tasks in that zone.
     """
+    # Pre-fetch allowed tasks for zone filtering
+    allowed_tasks = None
+    if zone_filter:
+        allowed_tasks = set(frappe.get_all(
+            "Task",
+            filters={"project": project, "type": ["like", "%{}%".format(zone_filter)]},
+            pluck="name",
+        ))
     inv_filters = {"project": project, "docstatus": 1}
     inv_filters.update(_date_filter("posting_date", from_date, to_date))
 
@@ -501,6 +525,13 @@ def _get_pinv_materials(project, from_date, to_date):
             # Skip zero-amount lines
             if not flt(it.amount):
                 continue
+            # Zone filter: skip items whose task is not in the allowed zone
+            if allowed_tasks is not None:
+                item_task = it.get("task") or inv.get("task") or ""
+                if item_task and item_task not in allowed_tasks:
+                    continue
+                if not item_task:
+                    continue  # no task link — cannot verify zone, skip
             pd_    = inv.posting_date
             c_rate = get_contract_rate(it.item_name or it.item_code or it.description)
             qty    = flt(it.qty) or 1
