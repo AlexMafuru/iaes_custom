@@ -178,8 +178,7 @@ def _build_daily_map(checkins, holidays, to_date):
     today_local = getdate(nowdate())
     to_dt       = getdate(to_date)
     # "today" in report context = to_date if it equals today, otherwise no in-progress
-    is_report_today = (to_dt == today_local)
-
+is_report_today = True  # always show today's checkin/out when date range includes today
     buckets = {}
     for row in checkins:
         key = (row["employee"], row["attendance_date"])
@@ -199,7 +198,7 @@ def _build_daily_map(checkins, holidays, to_date):
         last_out = outs[-1] if outs else None
 
         d            = getdate(att_date)
-        is_today     = is_report_today and (d == to_dt)
+is_today = (d == today_local)  # Compare the row date directly to actual today
         is_sunday    = d.weekday() == 6
         is_saturday  = d.weekday() == 5
         is_holiday   = d in holidays
