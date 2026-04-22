@@ -178,7 +178,8 @@ def _build_daily_map(checkins, holidays, to_date):
     today_local = getdate(nowdate())
     to_dt       = getdate(to_date)
     # "today" in report context = to_date if it equals today, otherwise no in-progress
-is_report_today = True  # always show today's checkin/out when date range includes today
+    is_report_today = True  # FIX: Forced True to allow check-in logic
+
     buckets = {}
     for row in checkins:
         key = (row["employee"], row["attendance_date"])
@@ -197,11 +198,11 @@ is_report_today = True  # always show today's checkin/out when date range includ
         first_in = ins[0]   if ins  else None
         last_out = outs[-1] if outs else None
 
-        d            = getdate(att_date)
-is_today = (d == today_local)  # Compare the row date directly to actual today
-        is_sunday    = d.weekday() == 6
-        is_saturday  = d.weekday() == 5
-        is_holiday   = d in holidays
+        d              = getdate(att_date)
+        is_today       = (d == today_local)  # FIX: Direct comparison to calendar today
+        is_sunday      = d.weekday() == 6
+        is_saturday    = d.weekday() == 5
+        is_holiday     = d in holidays
         is_full_ot_day = is_holiday or is_sunday
 
         shift_out = SHIFT_OUT_SAT    if is_saturday else SHIFT_OUT_TIME
@@ -391,8 +392,8 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
             day = getdate(d)
             if punch.get("is_full_ot_day") and punch["work_hours"] > 0:
                 holiday_ot_days += 1
-                ot_total        += punch["overtime_hours"]
-                total_wh        += punch["work_hours"]
+                ot_total         += punch["overtime_hours"]
+                total_wh         += punch["work_hours"]
 
         absent  = max(total_wd - present - missing_count, 0)
         avg_wh  = flt(total_wh / (present_for_avg or 1), 2)
@@ -401,7 +402,7 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
         if att_pct >= 95:   status = "Excellent"
         elif att_pct >= 85: status = "Good"
         elif att_pct >= 75: status = "Moderate"
-        else:               status = "Needs Attention"
+        else:                status = "Needs Attention"
 
         rows.append({
             "employee":           emp_id,
@@ -416,11 +417,11 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
             "early_exits":        early_count,
             "missing_punches":    missing_count,
             "holiday_ot_days":    holiday_ot_days,
-            "total_work_hours":   flt(total_wh, 1),
-            "overtime_hours":     flt(ot_total, 1),
-            "avg_work_hours":     avg_wh,
-            "attendance_pct":     att_pct,
-            "status_summary":     status,
+            "total_work_hours":    flt(total_wh, 1),
+            "overtime_hours":      flt(ot_total, 1),
+            "avg_work_hours":      avg_wh,
+            "attendance_pct":      att_pct,
+            "status_summary":      status,
         })
     rows.sort(key=lambda x: x["attendance_pct"])
     return rows
@@ -469,18 +470,18 @@ def _get_summary_cards(data, mode, to_date):
         in_prog    = sum(1 for r in data if r.get("day_status") == "In Progress")
         return [
             {"value": absent,     "label": _("Absent Days"),     "indicator": "Red"    if absent     else "Green", "datatype": "Int"},
-            {"value": late,       "label": _("Late Arrivals"),   "indicator": "Orange" if late       else "Green", "datatype": "Int"},
+            {"value": late,       "label": _("Late Arrivals"),   "indicator": "Orange" if late        else "Green", "datatype": "Int"},
             {"value": missing,    "label": _("Missing Punches"), "indicator": "Red"    if missing    else "Green", "datatype": "Int"},
             {"value": in_prog,    "label": _("In Progress"),     "indicator": "Blue"   if in_prog    else "Green", "datatype": "Int"},
-            {"value": ot,         "label": _("OT Days"),         "indicator": "Blue",                              "datatype": "Int"},
+            {"value": ot,         "label": _("OT Days"),         "indicator": "Blue",                               "datatype": "Int"},
             {"value": holiday_ot, "label": _("Holiday OT Days"), "indicator": "Blue"   if holiday_ot else "Green", "datatype": "Int"},
         ]
 
     n             = len(data)
-    avg_att       = flt(sum(r["attendance_pct"] for r in data) / n, 1) if n else 0
+    avg_att        = flt(sum(r["attendance_pct"] for r in data) / n, 1) if n else 0
     total_checked_in  = sum(r.get("checked_in",  0) for r in data)
     total_checked_out = sum(r.get("checked_out", 0) for r in data)
-    total_on_site     = sum(r.get("on_site",     0) for r in data)
+    total_on_site     = sum(r.get("on_site",      0) for r in data)
 
     cards = []
 
