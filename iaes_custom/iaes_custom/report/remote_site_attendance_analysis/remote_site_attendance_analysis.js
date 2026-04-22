@@ -170,3 +170,4 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
         });
     },
 };
+
