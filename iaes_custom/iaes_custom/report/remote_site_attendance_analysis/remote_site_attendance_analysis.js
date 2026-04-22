@@ -1,16 +1,16 @@
-// Remote Site Biometric Attendance Analysis (v3)
+// Remote Site Biometric Attendance Analysis (v4)
 // =================================================
 // ERPNext Script Report — JavaScript file
 
 frappe.query_reports["Remote Site Attendance Analysis"] = {
 
     filters: [
-        {fieldname:"from_date",label:__("From Date"),fieldtype:"Date",default:frappe.datetime.month_start(),reqd:1},
-        {fieldname:"to_date",label:__("To Date"),fieldtype:"Date",default:frappe.datetime.month_end(),reqd:1},
-        {fieldname:"employee",label:__("Employee"),fieldtype:"Link",options:"Employee",get_query:()=>({filters:{status:"Active"}})},
-        {fieldname:"department",label:__("Department"),fieldtype:"Link",options:"Department"},
-        {fieldname:"site",label:__("Site / Branch"),fieldtype:"Data",default:"NMB"},
-        {fieldname:"report_mode",label:__("Report Mode"),fieldtype:"Select",options:"Summary\nDaily Detail",default:"Summary",reqd:1},
+        {fieldname:"from_date",   label:__("From Date"),      fieldtype:"Date",   default:frappe.datetime.month_start(), reqd:1},
+        {fieldname:"to_date",     label:__("To Date"),        fieldtype:"Date",   default:frappe.datetime.month_end(),   reqd:1},
+        {fieldname:"employee",    label:__("Employee"),       fieldtype:"Link",   options:"Employee", get_query:()=>({filters:{status:"Active"}})},
+        {fieldname:"department",  label:__("Department"),     fieldtype:"Link",   options:"Department"},
+        {fieldname:"site",        label:__("Site / Branch"),  fieldtype:"Data",   default:"NMB"},
+        {fieldname:"report_mode", label:__("Report Mode"),    fieldtype:"Select", options:"Summary\nDaily Detail", default:"Summary", reqd:1},
     ],
 
     formatter(value, row, column, data, default_formatter) {
@@ -19,45 +19,56 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
 
         const mode = frappe.query_report.get_filter_value("report_mode");
 
-        const drilldown = (emp_id, emp_name, label, count) => {
+        const drilldown = (emp_id, emp_name, count) => {
             if (!count || parseFloat(count) === 0) return `<span>${count}</span>`;
-            return `<a href="#" title="Click to see ${label} days for ${emp_name}"
-                onclick="frappe.query_report.set_filter_value('employee','${emp_id}');frappe.query_report.set_filter_value('report_mode','Daily Detail');frappe.query_report.refresh();return false;"
+            return `<a href="#" title="Click to see detail for ${emp_name}"
+                onclick="frappe.query_report.set_filter_value('employee','${emp_id}');
+                frappe.query_report.set_filter_value('report_mode','Daily Detail');
+                frappe.query_report.refresh();return false;"
                 style="text-decoration:underline;cursor:pointer;font-weight:600;">${count}</a>`;
         };
 
         const openCheckin = (emp_id, emp_name, count) => {
             if (!count || parseFloat(count) === 0) return `<span>${count}</span>`;
-            return `<a href="#" title="View Employee Checkin for ${emp_name}"
-                onclick="frappe.route_options={employee:'${emp_id}'};frappe.set_route('List','Employee Checkin');return false;"
+            return `<a href="#" title="View Checkin records for ${emp_name}"
+                onclick="frappe.route_options={employee:'${emp_id}'};
+                frappe.set_route('List','Employee Checkin');return false;"
                 style="text-decoration:underline;cursor:pointer;font-weight:600;color:#e74c3c;">${count}</a>`;
         };
 
         if (column.fieldname === "employee_name" && mode === "Summary") {
-            return `<a href="#" onclick="frappe.query_report.set_filter_value('employee','${data.employee}');frappe.query_report.set_filter_value('report_mode','Daily Detail');frappe.query_report.refresh();return false;"
+            return `<a href="#"
+                onclick="frappe.query_report.set_filter_value('employee','${data.employee}');
+                frappe.query_report.set_filter_value('report_mode','Daily Detail');
+                frappe.query_report.refresh();return false;"
                 style="font-weight:600;text-decoration:underline;cursor:pointer;color:var(--text-color);">${data.employee_name}</a>`;
         }
 
         if (column.fieldname === "present_days")
-            return drilldown(data.employee, data.employee_name, "present", data.present_days);
+            return drilldown(data.employee, data.employee_name, data.present_days);
 
         if (column.fieldname === "absent_days") {
             const v = parseFloat(data.absent_days) || 0;
-            const h = drilldown(data.employee, data.employee_name, "absent", data.absent_days);
+            const h = drilldown(data.employee, data.employee_name, data.absent_days);
             return v >= 3 ? h.replace("font-weight:600", "font-weight:600;color:#e74c3c") : h;
         }
 
         if (column.fieldname === "late_entries") {
             const v = parseInt(data.late_entries) || 0;
-            const h = drilldown(data.employee, data.employee_name, "late", data.late_entries);
+            const h = drilldown(data.employee, data.employee_name, data.late_entries);
             return v >= 3 ? h.replace("font-weight:600", "font-weight:600;color:#e67e22") : h;
         }
 
         if (column.fieldname === "early_exits")
-            return drilldown(data.employee, data.employee_name, "early exit", data.early_exits);
+            return drilldown(data.employee, data.employee_name, data.early_exits);
 
         if (column.fieldname === "missing_punches")
             return openCheckin(data.employee, data.employee_name, data.missing_punches);
+
+        if (column.fieldname === "holiday_ot_days") {
+            const v = parseInt(data.holiday_ot_days) || 0;
+            if (v > 0) return `<span style="color:#9b59b6;font-weight:600;">${v}</span>`;
+        }
 
         if (column.fieldname === "overtime_hours") {
             const v = parseFloat(data.overtime_hours) || 0;
@@ -80,7 +91,8 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
 
         if (column.fieldname === "attendance_date" && data.attendance_date) {
             return `<a href="#" title="View checkin for ${data.attendance_date}"
-                onclick="frappe.route_options={employee:'${data.employee}'};frappe.set_route('List','Employee Checkin');return false;"
+                onclick="frappe.route_options={employee:'${data.employee}'};
+                frappe.set_route('List','Employee Checkin');return false;"
                 style="text-decoration:underline;cursor:pointer;color:var(--text-color);">${data.attendance_date}</a>`;
         }
 
@@ -90,6 +102,8 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
         }
 
         if (column.fieldname === "last_out") {
+            if (data.last_out === "Active")
+                return `<span style="color:#27ae60;font-weight:600;">Active</span>`;
             const isEarly = data.early_exit && data.early_exit !== "Normal" && data.early_exit !== "-";
             if (isEarly) return `<span style="color:#e67e22;font-weight:600;">${data.last_out} (${data.early_exit})</span>`;
         }
@@ -98,8 +112,19 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
             return `<span style="color:#e74c3c;font-weight:600;">${data.missing_punch}</span>`;
 
         if (column.fieldname === "day_status") {
-            const map = {"Present":"green","Overtime":"blue","Late":"orange","Early Exit":"orange","Late + Early":"red","Incomplete":"red","Absent":"red"};
+            const map = {
+                "Present":"green","In Progress":"blue","Overtime":"blue",
+                "Holiday OT":"purple","Late":"orange","Early Exit":"orange",
+                "Late + Early":"red","Incomplete":"red","Absent":"red",
+            };
+            if (data.day_status === "In Progress")
+                return `<span style="background:#e8f4fd;color:#2980b9;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:500;">In Progress</span>`;
             return `<span class="indicator-pill ${map[data.day_status]||'grey'}">${data.day_status}</span>`;
+        }
+
+        if (column.fieldname === "work_hours" && data.day_status === "In Progress") {
+            const v = parseFloat(data.work_hours) || 0;
+            return `<span style="color:#2980b9;">${v.toFixed(2)} hrs so far</span>`;
         }
 
         return value;
@@ -114,22 +139,22 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
         });
         report.page.add_inner_button(__("This Week"), () => {
             frappe.query_report.set_filter_value("from_date", frappe.datetime.week_start());
-            frappe.query_report.set_filter_value("to_date", frappe.datetime.week_end());
+            frappe.query_report.set_filter_value("to_date",   frappe.datetime.week_end());
             frappe.query_report.refresh();
         });
         report.page.add_inner_button(__("This Month"), () => {
             frappe.query_report.set_filter_value("from_date", frappe.datetime.month_start());
-            frappe.query_report.set_filter_value("to_date", frappe.datetime.month_end());
+            frappe.query_report.set_filter_value("to_date",   frappe.datetime.month_end());
             frappe.query_report.refresh();
         });
         report.page.add_inner_button(__("Last Month"), () => {
             const last = frappe.datetime.add_months(frappe.datetime.month_start(), -1);
             frappe.query_report.set_filter_value("from_date", last);
-            frappe.query_report.set_filter_value("to_date", frappe.datetime.month_end(last));
+            frappe.query_report.set_filter_value("to_date",   frappe.datetime.month_end(last));
             frappe.query_report.refresh();
         });
         report.page.add_inner_button(__("Back to Summary"), () => {
-            frappe.query_report.set_filter_value("employee", "");
+            frappe.query_report.set_filter_value("employee",    "");
             frappe.query_report.set_filter_value("report_mode", "Summary");
             frappe.query_report.refresh();
         });

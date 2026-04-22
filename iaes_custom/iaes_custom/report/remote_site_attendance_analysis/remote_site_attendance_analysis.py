@@ -7,8 +7,8 @@ from datetime import datetime, date, timedelta, time as dtime
 SHIFT_IN_TIME      = dtime(7, 30, 0)   # 07:30 — Mon to Sat
 SHIFT_OUT_TIME     = dtime(17, 0,  0)  # 17:00 — Mon to Fri
 SHIFT_OUT_SAT      = dtime(13, 0,  0)  # 13:00 — Saturday
-STANDARD_HOURS     = 9.5               # 07:30–17:00 Mon–Fri
-STANDARD_HOURS_SAT = 5.5               # 07:30–13:00 Saturday
+STANDARD_HOURS     = 9.5               # 07:30-17:00 Mon-Fri
+STANDARD_HOURS_SAT = 5.5               # 07:30-13:00 Saturday
 LATE_GRACE_MINS    = 10
 EARLY_EXIT_MINS    = 15
 
@@ -34,18 +34,18 @@ def get_columns(filters):
         ]
     else:
         base += [
-            {"fieldname": "total_working_days", "label": _("Working Days"),  "fieldtype": "Int",     "width": 110},
-            {"fieldname": "present_days",        "label": _("Present"),       "fieldtype": "Float",   "width": 80},
-            {"fieldname": "absent_days",         "label": _("Absent"),        "fieldtype": "Float",   "width": 80},
-            {"fieldname": "late_entries",        "label": _("Late In"),       "fieldtype": "Int",     "width": 75},
-            {"fieldname": "early_exits",         "label": _("Early Out"),     "fieldtype": "Int",     "width": 85},
-            {"fieldname": "missing_punches",     "label": _("Missing Punch"), "fieldtype": "Int",     "width": 110},
-            {"fieldname": "holiday_ot_days",     "label": _("Holiday OT Days"), "fieldtype": "Int",   "width": 110},
-            {"fieldname": "total_work_hours",    "label": _("Total Hrs"),     "fieldtype": "Float",   "width": 90,  "precision": 1},
-            {"fieldname": "overtime_hours",      "label": _("OT Hrs"),        "fieldtype": "Float",   "width": 80,  "precision": 1},
-            {"fieldname": "avg_work_hours",      "label": _("Avg Hrs/Day"),   "fieldtype": "Float",   "width": 100, "precision": 2},
-            {"fieldname": "attendance_pct",      "label": _("Attendance %"),  "fieldtype": "Percent", "width": 115},
-            {"fieldname": "status_summary",      "label": _("Status"),        "fieldtype": "Data",    "width": 125},
+            {"fieldname": "total_working_days", "label": _("Working Days"),    "fieldtype": "Int",     "width": 110},
+            {"fieldname": "present_days",        "label": _("Present"),         "fieldtype": "Float",   "width": 80},
+            {"fieldname": "absent_days",         "label": _("Absent"),          "fieldtype": "Float",   "width": 80},
+            {"fieldname": "late_entries",        "label": _("Late In"),         "fieldtype": "Int",     "width": 75},
+            {"fieldname": "early_exits",         "label": _("Early Out"),       "fieldtype": "Int",     "width": 85},
+            {"fieldname": "missing_punches",     "label": _("Missing Punch"),   "fieldtype": "Int",     "width": 110},
+            {"fieldname": "holiday_ot_days",     "label": _("Holiday OT Days"), "fieldtype": "Int",     "width": 110},
+            {"fieldname": "total_work_hours",    "label": _("Total Hrs"),       "fieldtype": "Float",   "width": 90,  "precision": 1},
+            {"fieldname": "overtime_hours",      "label": _("OT Hrs"),          "fieldtype": "Float",   "width": 80,  "precision": 1},
+            {"fieldname": "avg_work_hours",      "label": _("Avg Hrs/Day"),     "fieldtype": "Float",   "width": 100, "precision": 2},
+            {"fieldname": "attendance_pct",      "label": _("Attendance %"),    "fieldtype": "Percent", "width": 115},
+            {"fieldname": "status_summary",      "label": _("Status"),          "fieldtype": "Data",    "width": 125},
         ]
     return base
 
@@ -117,17 +117,11 @@ def _get_checkins(employee_ids, from_date, to_date):
 def _get_holiday_set(employees, from_date, to_date):
     """
     Dynamically resolves the correct holiday list for the queried date range.
-    Priority:
-      1. Holiday list assigned to the employee that covers the date range
-      2. Any holiday list whose from_date/to_date covers the range year
-      3. HR Settings default holiday list
-      4. Falls back to employee's assigned list regardless of year
-    This ensures the report works correctly across year changes without
-    manual reconfiguration.
+    Searches all Holiday Lists covering the date range and picks the one
+    matching the query year — works automatically across year changes.
     """
     holiday_dates = set()
     from_dt = getdate(from_date)
-    to_dt   = getdate(to_date)
 
     def _fetch_holidays(hl_name, seen):
         if not hl_name or hl_name in seen:
@@ -142,36 +136,20 @@ def _get_holiday_set(employees, from_date, to_date):
             holiday_dates.add(getdate(r["holiday_date"]))
 
     def _find_best_holiday_list(base_hl):
-        """
-        Given a base holiday list name, find the best matching one
-        for the queried date range by checking Holiday List from_date/to_date.
-        Returns the best matching holiday list name.
-        """
         if not base_hl:
             return None
-
-        # Try to find holiday lists that cover our date range
         candidates = frappe.get_all(
             "Holiday List",
-            filters={
-                "from_date": ["<=", to_date],
-                "to_date":   [">=", from_date],
-            },
+            filters={"from_date": ["<=", to_date], "to_date": [">=", from_date]},
             fields=["name", "from_date", "to_date"],
             order_by="from_date desc"
         )
-
         if not candidates:
             return base_hl
-
-        # Prefer the one whose year matches the from_date year
         target_year = from_dt.year
         for c in candidates:
-            hl_year = getdate(c["from_date"]).year
-            if hl_year == target_year:
+            if getdate(c["from_date"]).year == target_year:
                 return c["name"]
-
-        # Fall back to the most recent covering list
         return candidates[0]["name"]
 
     seen = set()
@@ -181,9 +159,6 @@ def _get_holiday_set(employees, from_date, to_date):
         )
         best_hl = _find_best_holiday_list(base_hl)
         _fetch_holidays(best_hl, seen)
-
-        # Also fetch from the employee's directly assigned list
-        # in case it has additional entries
         if base_hl and base_hl != best_hl:
             _fetch_holidays(base_hl, seen)
 
@@ -191,7 +166,7 @@ def _get_holiday_set(employees, from_date, to_date):
 
 
 def _build_working_days_set(from_date, to_date, holidays):
-    """Mon–Sat excluding public holidays. Sunday is always rest."""
+    """Mon-Sat excluding public holidays. Sunday is always rest."""
     working = set()
     cur = getdate(from_date)
     end = getdate(to_date)
@@ -221,34 +196,38 @@ def _build_daily_map(checkins, holidays):
         first_in = ins[0]   if ins  else None
         last_out = outs[-1] if outs else None
 
-        d           = getdate(att_date)
-        is_sunday   = d.weekday() == 6
-        is_saturday = d.weekday() == 5
-        is_holiday  = d in holidays
-
-        # All hours on a public holiday or Sunday = overtime
+        d            = getdate(att_date)
+        is_today     = (d == date.today())
+        is_sunday    = d.weekday() == 6
+        is_saturday  = d.weekday() == 5
+        is_holiday   = d in holidays
         is_full_ot_day = is_holiday or is_sunday
 
-        shift_out = SHIFT_OUT_SAT   if is_saturday else SHIFT_OUT_TIME
+        shift_out = SHIFT_OUT_SAT    if is_saturday else SHIFT_OUT_TIME
         std_hrs   = STANDARD_HOURS_SAT if is_saturday else STANDARD_HOURS
 
-        # Work hours
+        # Work hours — for in-progress days use hours so far
         work_hours = 0.0
         if first_in and last_out:
             base   = date(2000, 1, 1)
             dt_in  = datetime.combine(base, first_in)
             dt_out = datetime.combine(base, last_out)
             work_hours = max((dt_out - dt_in).total_seconds() / 3600, 0)
+        elif first_in and is_today and not last_out:
+            # Still working — calculate hours so far
+            now_time = datetime.now().time()
+            base     = date(2000, 1, 1)
+            dt_in    = datetime.combine(base, first_in)
+            dt_now   = datetime.combine(base, now_time)
+            work_hours = max((dt_now - dt_in).total_seconds() / 3600, 0)
 
-        # Overtime calculation
+        # Overtime
         if is_full_ot_day:
-            # Public holiday or Sunday — all hours are OT
             overtime_h = work_hours
         else:
-            # Normal day — OT = hours beyond standard
             overtime_h = max(work_hours - std_hrs, 0) if work_hours else 0.0
 
-        # Late entry (not applicable on holidays/Sundays)
+        # Late entry
         late_entry = False
         late_by_mins = 0
         if first_in and not is_full_ot_day:
@@ -258,7 +237,7 @@ def _build_daily_map(checkins, holidays):
                 late_entry   = True
                 late_by_mins = int((actual_in - datetime.combine(date.today(), SHIFT_IN_TIME)).total_seconds() / 60)
 
-        # Early exit (not applicable on holidays/Sundays)
+        # Early exit
         early_exit = False
         early_by_mins = 0
         if last_out and not is_full_ot_day:
@@ -268,32 +247,42 @@ def _build_daily_map(checkins, holidays):
                 early_exit    = True
                 early_by_mins = int((datetime.combine(date.today(), shift_out) - actual_out).total_seconds() / 60)
 
-        # Missing punch (not flagged on holidays/Sundays — presence is voluntary)
+        # Missing punch detection
+        # Today with IN but no OUT = still working (In Progress)
         missing_punch = (not ins) or (not outs)
         if is_full_ot_day:
             missing_punch = False
             missing_type  = ""
-        elif not ins and outs:       missing_type = "Missing IN"
-        elif ins and not outs:       missing_type = "Missing OUT"
-        elif not ins and not outs:   missing_type = "No punches"
-        else:                        missing_type = ""
+        elif not ins and outs:
+            missing_type = "Missing IN"
+        elif ins and not outs:
+            if is_today:
+                missing_punch = False
+                missing_type  = "In Progress"
+            else:
+                missing_type = "Missing OUT"
+        elif not ins and not outs:
+            missing_type = "No punches"
+        else:
+            missing_type = ""
 
         result[(emp, att_date)] = {
-            "employee_name":   b["employee_name"],
-            "first_in":        _fmt_time(first_in),
-            "last_out":        _fmt_time(last_out),
-            "work_hours":      flt(work_hours, 2),
-            "overtime_hours":  flt(overtime_h, 2),
-            "late_entry":      late_entry,
-            "late_by_mins":    late_by_mins,
-            "early_exit":      early_exit,
-            "early_by_mins":   early_by_mins,
-            "missing_punch":   missing_punch,
-            "missing_type":    missing_type,
-            "is_holiday":      is_holiday,
-            "is_sunday":       is_sunday,
-            "is_saturday":     is_saturday,
-            "is_full_ot_day":  is_full_ot_day,
+            "employee_name":  b["employee_name"],
+            "first_in":       _fmt_time(first_in),
+            "last_out":       _fmt_time(last_out) if last_out else "Active",
+            "work_hours":     flt(work_hours, 2),
+            "overtime_hours": flt(overtime_h, 2),
+            "late_entry":     late_entry,
+            "late_by_mins":   late_by_mins,
+            "early_exit":     early_exit,
+            "early_by_mins":  early_by_mins,
+            "missing_punch":  missing_punch,
+            "missing_type":   missing_type,
+            "is_holiday":     is_holiday,
+            "is_sunday":      is_sunday,
+            "is_saturday":    is_saturday,
+            "is_full_ot_day": is_full_ot_day,
+            "is_today":       is_today,
         }
     return result
 
@@ -303,22 +292,21 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
     for emp in employees:
         emp_id = emp["name"]
 
-        # All days to show = working days + any holiday/Sunday with punches
         all_days = set(working_days)
         for (e, d), punch in daily_map.items():
             if e == emp_id and punch.get("is_full_ot_day"):
                 all_days.add(getdate(d))
 
         for day in sorted(all_days):
-            punch     = daily_map.get((emp_id, day))
+            punch      = daily_map.get((emp_id, day))
             is_holiday = day in holidays
             is_sunday  = day.weekday() == 6
             is_saturday = day.weekday() == 5
 
-            if is_sunday:   day_label = "Sun (Rest)"
-            elif is_saturday: day_label = "Sat"
-            else:           day_label = day.strftime("%a")
-            if is_holiday:  day_label += " (PH)"
+            if is_sunday:       day_label = "Sun (Rest)"
+            elif is_saturday:   day_label = "Sat"
+            else:               day_label = day.strftime("%a")
+            if is_holiday:      day_label += " (PH)"
 
             if punch:
                 late_lbl    = f"+{punch['late_by_mins']}m"  if punch["late_entry"]    else "On time"
@@ -326,21 +314,21 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
                 missing_lbl = punch["missing_type"]          if punch["missing_punch"] else "-"
                 wh, oth     = punch["work_hours"], punch["overtime_hours"]
 
-                if punch["is_full_ot_day"]:              status = "Holiday OT"
-                elif punch["missing_punch"]:             status = "Incomplete"
+                if punch["is_full_ot_day"]:                       status = "Holiday OT"
+                elif punch.get("missing_type") == "In Progress":  status = "In Progress"
+                elif punch["missing_punch"]:                       status = "Incomplete"
                 elif punch["late_entry"] and punch["early_exit"]: status = "Late + Early"
-                elif punch["late_entry"]:                status = "Late"
-                elif punch["early_exit"]:                status = "Early Exit"
-                elif oth > 0:                            status = "Overtime"
-                else:                                    status = "Present"
+                elif punch["late_entry"]:                          status = "Late"
+                elif punch["early_exit"]:                          status = "Early Exit"
+                elif oth > 0:                                      status = "Overtime"
+                else:                                              status = "Present"
             else:
                 late_lbl = early_lbl = missing_lbl = "-"
                 wh = oth = 0.0
-                # Only mark absent on working days
                 status = "Absent" if day in working_days else "-"
 
             if status == "-":
-                continue  # Skip non-working days with no punches
+                continue
 
             rows.append({
                 "employee":       emp_id,
@@ -368,21 +356,25 @@ def _build_summary_rows(employees, daily_map, working_days, holidays):
         total_wh = ot_total = 0.0
         present_for_avg = 0
 
-        # Working days
         for day in working_days:
             punch = daily_map.get((emp_id, day))
             if punch:
                 if not punch["missing_punch"]:
+                    # Present or In Progress both count as present
                     present += 1
                     present_for_avg += 1
                     total_wh += punch["work_hours"]
                     ot_total += punch["overtime_hours"]
+                elif punch.get("missing_type") == "In Progress":
+                    # Currently working — count as present
+                    present += 1
+                    present_for_avg += 1
+                    total_wh += punch["work_hours"]
                 else:
                     missing_count += 1
                 if punch["late_entry"]:  late_count  += 1
                 if punch["early_exit"]: early_count += 1
 
-        # Holiday / Sunday OT days (punches on non-working days)
         for (e, d), punch in daily_map.items():
             if e != emp_id:
                 continue
@@ -434,14 +426,15 @@ def _get_chart(data, mode):
             {"name": name, "values": [hrs.get(d, 0) for d in all_dates], "chartType": "bar"}
             for name, hrs in by_emp.items()
         ]
-        return {"data": {"labels": all_dates, "datasets": datasets}, "type": "bar", "height": 280, "title": "Daily Work Hours by Employee"}
+        return {"data": {"labels": all_dates, "datasets": datasets},
+                "type": "bar", "height": 280, "title": "Daily Work Hours by Employee"}
     labels = [r["employee_name"] for r in data]
     return {
         "data": {"labels": labels, "datasets": [
-            {"name": "Present",       "values": [r["present_days"]    for r in data], "chartType": "bar"},
-            {"name": "Absent",        "values": [r["absent_days"]     for r in data], "chartType": "bar"},
-            {"name": "Holiday OT",    "values": [r["holiday_ot_days"] for r in data], "chartType": "bar"},
-            {"name": "OT Hours",      "values": [r["overtime_hours"]  for r in data], "chartType": "line"},
+            {"name": "Present",    "values": [r["present_days"]    for r in data], "chartType": "bar"},
+            {"name": "Absent",     "values": [r["absent_days"]     for r in data], "chartType": "bar"},
+            {"name": "Holiday OT", "values": [r["holiday_ot_days"] for r in data], "chartType": "bar"},
+            {"name": "OT Hours",   "values": [r["overtime_hours"]  for r in data], "chartType": "line"},
         ]},
         "type": "bar", "colors": ["#2ecc71", "#e74c3c", "#9b59b6", "#3498db"],
         "height": 280, "title": "Biometric Attendance Summary",
@@ -452,27 +445,29 @@ def _get_summary_cards(data, mode):
     if not data:
         return []
     if mode == "Daily Detail":
-        absent      = sum(1 for r in data if r.get("day_status") == "Absent")
-        late        = sum(1 for r in data if "Late" in str(r.get("day_status", "")))
-        missing     = sum(1 for r in data if r.get("missing_punch", "-") not in ("-", ""))
-        ot          = sum(1 for r in data if flt(r.get("overtime_hours", 0)) > 0)
-        holiday_ot  = sum(1 for r in data if r.get("day_status") == "Holiday OT")
+        absent     = sum(1 for r in data if r.get("day_status") == "Absent")
+        late       = sum(1 for r in data if "Late" in str(r.get("day_status", "")))
+        missing    = sum(1 for r in data if r.get("missing_punch", "-") not in ("-", ""))
+        ot         = sum(1 for r in data if flt(r.get("overtime_hours", 0)) > 0)
+        holiday_ot = sum(1 for r in data if r.get("day_status") == "Holiday OT")
+        in_prog    = sum(1 for r in data if r.get("day_status") == "In Progress")
         return [
             {"value": absent,     "label": _("Absent Days"),     "indicator": "Red"    if absent     else "Green", "datatype": "Int"},
             {"value": late,       "label": _("Late Arrivals"),   "indicator": "Orange" if late       else "Green", "datatype": "Int"},
             {"value": missing,    "label": _("Missing Punches"), "indicator": "Red"    if missing    else "Green", "datatype": "Int"},
+            {"value": in_prog,    "label": _("In Progress"),     "indicator": "Blue"   if in_prog    else "Green", "datatype": "Int"},
             {"value": ot,         "label": _("OT Days"),         "indicator": "Blue",                              "datatype": "Int"},
-            {"value": holiday_ot, "label": _("Holiday OT Days"), "indicator": "Purple" if holiday_ot else "Green", "datatype": "Int"},
+            {"value": holiday_ot, "label": _("Holiday OT Days"), "indicator": "Blue"   if holiday_ot else "Green", "datatype": "Int"},
         ]
     n       = len(data)
     avg_att = flt(sum(r["attendance_pct"] for r in data) / n, 1) if n else 0
     return [
-        {"value": n,       "label": _("Employees"),          "indicator": "Blue",                                 "datatype": "Int"},
-        {"value": avg_att, "label": _("Avg Attendance %"),   "indicator": "Green" if avg_att >= 85 else "Orange", "datatype": "Percent"},
-        {"value": sum(r["absent_days"]      for r in data),  "label": _("Absent Days"),      "indicator": "Red"    if sum(r["absent_days"]      for r in data) else "Green", "datatype": "Float"},
-        {"value": sum(r["late_entries"]     for r in data),  "label": _("Late Arrivals"),    "indicator": "Orange" if sum(r["late_entries"]     for r in data) else "Green", "datatype": "Int"},
-        {"value": sum(r["missing_punches"]  for r in data),  "label": _("Missing Punches"),  "indicator": "Red"    if sum(r["missing_punches"]  for r in data) else "Green", "datatype": "Int"},
-        {"value": sum(r["holiday_ot_days"]  for r in data),  "label": _("Holiday OT Days"),  "indicator": "Blue"   if sum(r["holiday_ot_days"]  for r in data) else "Green", "datatype": "Int"},
+        {"value": n,       "label": _("Employees"),          "indicator": "Blue",                                  "datatype": "Int"},
+        {"value": avg_att, "label": _("Avg Attendance %"),   "indicator": "Green" if avg_att >= 85 else "Orange",  "datatype": "Percent"},
+        {"value": sum(r["absent_days"]     for r in data),   "label": _("Absent Days"),     "indicator": "Red"    if sum(r["absent_days"]     for r in data) else "Green", "datatype": "Float"},
+        {"value": sum(r["late_entries"]    for r in data),   "label": _("Late Arrivals"),   "indicator": "Orange" if sum(r["late_entries"]    for r in data) else "Green", "datatype": "Int"},
+        {"value": sum(r["missing_punches"] for r in data),   "label": _("Missing Punches"), "indicator": "Red"    if sum(r["missing_punches"] for r in data) else "Green", "datatype": "Int"},
+        {"value": sum(r["holiday_ot_days"] for r in data),   "label": _("Holiday OT Days"), "indicator": "Blue"   if sum(r["holiday_ot_days"] for r in data) else "Green", "datatype": "Int"},
         {"value": flt(sum(r["overtime_hours"] for r in data), 1), "label": _("Total OT Hrs"), "indicator": "Blue", "datatype": "Float"},
         {"value": sum(1 for r in data if r["status_summary"] == "Needs Attention"),
          "label": _("Need Attention"), "indicator": "Red" if any(r["status_summary"] == "Needs Attention" for r in data) else "Green", "datatype": "Int"},
