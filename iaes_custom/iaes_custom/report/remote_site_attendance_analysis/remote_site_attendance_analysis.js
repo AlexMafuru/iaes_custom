@@ -151,7 +151,6 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
     frappe.query_report.set_filter_value("from_date", fmt(monday));
     frappe.query_report.set_filter_value("to_date",   fmt(sunday));
     frappe.query_report.refresh();
-});
         });
         report.page.add_inner_button(__("This Month"), () => {
             frappe.query_report.set_filter_value("from_date", frappe.datetime.month_start());
