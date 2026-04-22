@@ -174,11 +174,9 @@ def _build_working_days_set(from_date, to_date, holidays):
 
 
 def _build_daily_map(checkins, holidays, to_date):
-    # Use frappe's now_datetime to get server local time (timezone-aware)
     today_local = getdate(nowdate())
     to_dt       = getdate(to_date)
-    # "today" in report context = to_date if it equals today, otherwise no in-progress
-    is_report_today = True  # FIX: Forced True to allow check-in logic
+    is_report_today = True 
 
     buckets = {}
     for row in checkins:
@@ -199,7 +197,7 @@ def _build_daily_map(checkins, holidays, to_date):
         last_out = outs[-1] if outs else None
 
         d              = getdate(att_date)
-        is_today       = (d == today_local)  # FIX: Direct comparison to calendar today
+        is_today       = (d == today_local)
         is_sunday      = d.weekday() == 6
         is_saturday    = d.weekday() == 5
         is_holiday     = d in holidays
@@ -208,7 +206,6 @@ def _build_daily_map(checkins, holidays, to_date):
         shift_out = SHIFT_OUT_SAT    if is_saturday else SHIFT_OUT_TIME
         std_hrs   = STANDARD_HOURS_SAT if is_saturday else STANDARD_HOURS
 
-        # Work hours
         work_hours = 0.0
         if first_in and last_out:
             base   = date(2000, 1, 1)
@@ -216,20 +213,17 @@ def _build_daily_map(checkins, holidays, to_date):
             dt_out = datetime.combine(base, last_out)
             work_hours = max((dt_out - dt_in).total_seconds() / 3600, 0)
         elif first_in and is_today and not last_out:
-            # Still working — hours so far using server local time
             now_t  = now_datetime().time()
             base   = date(2000, 1, 1)
             dt_in  = datetime.combine(base, first_in)
             dt_now = datetime.combine(base, now_t)
             work_hours = max((dt_now - dt_in).total_seconds() / 3600, 0)
 
-        # Overtime
         if is_full_ot_day:
             overtime_h = work_hours
         else:
             overtime_h = max(work_hours - std_hrs, 0) if work_hours else 0.0
 
-        # Late entry
         late_entry = False
         late_by_mins = 0
         if first_in and not is_full_ot_day:
@@ -239,7 +233,6 @@ def _build_daily_map(checkins, holidays, to_date):
                 late_entry   = True
                 late_by_mins = int((actual_in - datetime.combine(date.today(), SHIFT_IN_TIME)).total_seconds() / 60)
 
-        # Early exit
         early_exit = False
         early_by_mins = 0
         if last_out and not is_full_ot_day:
@@ -249,7 +242,6 @@ def _build_daily_map(checkins, holidays, to_date):
                 early_exit    = True
                 early_by_mins = int((datetime.combine(date.today(), shift_out) - actual_out).total_seconds() / 60)
 
-        # Missing punch
         missing_punch = (not ins) or (not outs)
         if is_full_ot_day:
             missing_punch = False
@@ -352,48 +344,53 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
 def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
     rows = []
     total_wd   = len(working_days)
-    today_date = getdate(to_date)
+    today_local = getdate(nowdate())
 
     for emp in employees:
         emp_id = emp["name"]
         present = late_count = early_count = missing_count = holiday_ot_days = 0
-        checked_in_today = checked_out_today = on_site_now = 0
+        checked_in_total = checked_out_total = on_site_now = 0
         total_wh = ot_total = 0.0
         present_for_avg = 0
 
-        for day in working_days:
+        # Check all days in report range
+        # We find every day for this employee in the daily_map
+        all_report_days = set(working_days)
+        for (e, d) in daily_map.keys():
+            if e == emp_id:
+                all_report_days.add(getdate(d))
+
+        for day in sorted(all_report_days):
             punch = daily_map.get((emp_id, day))
             if punch:
-                in_progress = punch.get("missing_type") == "In Progress"
-
-                if not punch["missing_punch"] or in_progress:
-                    present += 1
-                    present_for_avg += 1
-                    total_wh += punch["work_hours"]
-                    ot_total += punch["overtime_hours"]
-                else:
-                    missing_count += 1
-
-                if punch["late_entry"]:  late_count  += 1
-                if punch["early_exit"]: early_count += 1
-
-                # Today's checkin/checkout counts
-                if punch.get("is_today"):
-                    if punch["has_in"]:
-                        checked_in_today = 1
-                    if punch["has_out"]:
-                        checked_out_today = 1
-                    if punch["has_in"] and not punch["has_out"]:
+                # Cumulative counts for the period
+                if punch.get("has_in"):
+                    checked_in_total += 1
+                if punch.get("has_out"):
+                    checked_out_total += 1
+                
+                # Check current live status (only if day is actual calendar today)
+                if getdate(day) == today_local:
+                    if punch.get("has_in") and not punch.get("has_out"):
                         on_site_now = 1
 
-        for (e, d), punch in daily_map.items():
-            if e != emp_id:
-                continue
-            day = getdate(d)
-            if punch.get("is_full_ot_day") and punch["work_hours"] > 0:
-                holiday_ot_days += 1
-                ot_total         += punch["overtime_hours"]
-                total_wh         += punch["work_hours"]
+                # Attendance and Hours logic
+                if day in working_days:
+                    in_progress = punch.get("missing_type") == "In Progress"
+                    if not punch["missing_punch"] or in_progress:
+                        present += 1
+                        present_for_avg += 1
+                    else:
+                        missing_count += 1
+                    
+                    if punch["late_entry"]:  late_count  += 1
+                    if punch["early_exit"]: early_count += 1
+
+                # OT calculation
+                total_wh += punch["work_hours"]
+                ot_total += punch["overtime_hours"]
+                if punch.get("is_full_ot_day") and punch["work_hours"] > 0:
+                    holiday_ot_days += 1
 
         absent  = max(total_wd - present - missing_count, 0)
         avg_wh  = flt(total_wh / (present_for_avg or 1), 2)
@@ -408,8 +405,8 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
             "employee":           emp_id,
             "employee_name":      emp["employee_name"],
             "total_working_days": total_wd,
-            "checked_in":         checked_in_today,
-            "checked_out":        checked_out_today,
+            "checked_in":         checked_in_total,
+            "checked_out":        checked_out_total,
             "on_site":            on_site_now,
             "present_days":       present,
             "absent_days":        absent,
@@ -458,9 +455,7 @@ def _get_chart(data, mode):
 def _get_summary_cards(data, mode, to_date):
     if not data:
         return []
-
     is_today_report = (getdate(to_date) == getdate(nowdate()))
-
     if mode == "Daily Detail":
         absent     = sum(1 for r in data if r.get("day_status") == "Absent")
         late       = sum(1 for r in data if "Late" in str(r.get("day_status", "")))
@@ -479,18 +474,10 @@ def _get_summary_cards(data, mode, to_date):
 
     n             = len(data)
     avg_att        = flt(sum(r["attendance_pct"] for r in data) / n, 1) if n else 0
-    total_checked_in  = sum(r.get("checked_in",  0) for r in data)
-    total_checked_out = sum(r.get("checked_out", 0) for r in data)
     total_on_site     = sum(r.get("on_site",      0) for r in data)
-
     cards = []
-
     if is_today_report:
-        cards += [
-            {"value": total_checked_in,  "label": _("Checked In Today"),  "indicator": "Green" if total_checked_in  else "Red",    "datatype": "Int"},
-            {"value": total_checked_out, "label": _("Checked Out Today"), "indicator": "Green" if total_checked_out else "Orange", "datatype": "Int"},
-            {"value": total_on_site,     "label": _("Still On Site"),     "indicator": "Blue"  if total_on_site     else "Green",  "datatype": "Int"},
-        ]
+        cards += [{"value": total_on_site, "label": _("Still On Site"), "indicator": "Blue" if total_on_site else "Green", "datatype": "Int"}]
 
     cards += [
         {"value": n,       "label": _("Employees"),          "indicator": "Blue",                                  "datatype": "Int"},
@@ -500,20 +487,15 @@ def _get_summary_cards(data, mode, to_date):
         {"value": sum(r["missing_punches"] for r in data),   "label": _("Missing Punches"), "indicator": "Red"    if sum(r["missing_punches"] for r in data) else "Green", "datatype": "Int"},
         {"value": sum(r["holiday_ot_days"] for r in data),   "label": _("Holiday OT Days"), "indicator": "Blue"   if sum(r["holiday_ot_days"] for r in data) else "Green", "datatype": "Int"},
         {"value": flt(sum(r["overtime_hours"] for r in data), 1), "label": _("Total OT Hrs"), "indicator": "Blue", "datatype": "Float"},
-        {"value": sum(1 for r in data if r["status_summary"] == "Needs Attention"),
-         "label": _("Need Attention"), "indicator": "Red" if any(r["status_summary"] == "Needs Attention" for r in data) else "Green", "datatype": "Int"},
     ]
     return cards
 
 
 def _to_time(t):
-    if isinstance(t, dtime):
-        return t
+    if isinstance(t, dtime): return t
     if isinstance(t, str):
-        try:
-            return datetime.strptime(t, "%H:%M:%S").time()
-        except ValueError:
-            return dtime(0, 0, 0)
+        try: return datetime.strptime(t, "%H:%M:%S").time()
+        except ValueError: return dtime(0, 0, 0)
     if isinstance(t, timedelta):
         secs = int(t.total_seconds())
         h, r = divmod(secs, 3600)
@@ -523,6 +505,5 @@ def _to_time(t):
 
 
 def _fmt_time(t):
-    if t is None:
-        return "-"
+    if t is None: return "-"
     return _to_time(t).strftime("%H:%M")
