@@ -137,10 +137,21 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
             frappe.query_report.set_filter_value("to_date", t);
             frappe.query_report.refresh();
         });
-        report.page.add_inner_button(__("This Week"), () => {
-            frappe.query_report.set_filter_value("from_date", frappe.datetime.week_start());
-            frappe.query_report.set_filter_value("to_date",   frappe.datetime.week_end());
-            frappe.query_report.refresh();
+   report.page.add_inner_button(__("This Week"), () => {
+    const today = new Date();
+    const day   = today.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+    const offsetToMon = day === 0 ? -6 : 1 - day;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + offsetToMon);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = d => d.getFullYear() + "-" +
+        String(d.getMonth()+1).padStart(2,"0") + "-" +
+        String(d.getDate()).padStart(2,"0");
+    frappe.query_report.set_filter_value("from_date", fmt(monday));
+    frappe.query_report.set_filter_value("to_date",   fmt(sunday));
+    frappe.query_report.refresh();
+});
         });
         report.page.add_inner_button(__("This Month"), () => {
             frappe.query_report.set_filter_value("from_date", frappe.datetime.month_start());
