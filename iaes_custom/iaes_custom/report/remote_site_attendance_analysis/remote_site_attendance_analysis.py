@@ -343,7 +343,7 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
 
 def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
     rows = []
-    total_wd   = len(working_days)
+    total_wd = len(working_days)
     today_local = getdate(nowdate())
 
     for emp in employees:
@@ -353,72 +353,60 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
         total_wh = ot_total = 0.0
         present_for_avg = 0
 
-        # Check all days in report range
-        # We find every day for this employee in the daily_map
-        all_report_days = set(working_days)
-        for (e, d) in daily_map.keys():
+        # Look at every day in the report range
+        for (e, day_dt), punch in daily_map.items():
             if e == emp_id:
-                all_report_days.add(getdate(d))
-
-        for day in sorted(all_report_days):
-            punch = daily_map.get((emp_id, day))
-            if punch:
-                # Cumulative counts for the period
+                day = getdate(day_dt)
+                
+                # COUNT EVERY PUNCH IN THE RANGE
                 if punch.get("has_in"):
                     checked_in_total += 1
                 if punch.get("has_out"):
                     checked_out_total += 1
                 
-                # Check current live status (only if day is actual calendar today)
-                if getdate(day) == today_local:
+                # Live status for actual today
+                if day == today_local:
                     if punch.get("has_in") and not punch.get("has_out"):
                         on_site_now = 1
 
-                # Attendance and Hours logic
+                # Totals
+                total_wh += punch["work_hours"]
+                ot_total += punch["overtime_hours"]
+                
                 if day in working_days:
-                    in_progress = punch.get("missing_type") == "In Progress"
-                    if not punch["missing_punch"] or in_progress:
+                    if not punch["missing_punch"] or punch.get("missing_type") == "In Progress":
                         present += 1
                         present_for_avg += 1
                     else:
                         missing_count += 1
-                    
-                    if punch["late_entry"]:  late_count  += 1
+                    if punch["late_entry"]: late_count += 1
                     if punch["early_exit"]: early_count += 1
-
-                # OT calculation
-                total_wh += punch["work_hours"]
-                ot_total += punch["overtime_hours"]
+                
                 if punch.get("is_full_ot_day") and punch["work_hours"] > 0:
                     holiday_ot_days += 1
 
-        absent  = max(total_wd - present - missing_count, 0)
-        avg_wh  = flt(total_wh / (present_for_avg or 1), 2)
+        absent = max(total_wd - present - missing_count, 0)
+        avg_wh = flt(total_wh / (present_for_avg or 1), 2)
         att_pct = flt(present / total_wd * 100, 1) if total_wd else 0.0
 
-        if att_pct >= 95:   status = "Excellent"
-        elif att_pct >= 85: status = "Good"
-        elif att_pct >= 75: status = "Moderate"
-        else:                status = "Needs Attention"
-
         rows.append({
-            "employee":           emp_id,
-            "employee_name":      emp["employee_name"],
+            "employee": emp_id,
+            "employee_name": emp["employee_name"],
             "total_working_days": total_wd,
-            "checked_in":         checked_in_total,
-            "checked_out":        checked_out_total,
-            "on_site":            on_site_now,
-            "present_days":       present,
-            "absent_days":        absent,
-            "late_entries":       late_count,
-            "early_exits":        early_count,
-            "missing_punches":    missing_count,
-            "holiday_ot_days":    holiday_ot_days,
-            "total_work_hours":    flt(total_wh, 1),
-            "overtime_hours":      flt(ot_total, 1),
-            "avg_work_hours":      avg_wh,
-            "attendance_pct":      att_pct,
-            "status_summary":      status,
+            "checked_in": checked_in_total,
+            "checked_out": checked_out_total,
+            "on_site": on_site_now,
+            "present_days": present,
+            "absent_days": absent,
+            "late_entries": late_count,
+            "early_exits": early_count,
+            "missing_punches": missing_count,
+            "holiday_ot_days": holiday_ot_days,
+            "total_work_hours": flt(total_wh, 1),
+            "overtime_hours": flt(ot_total, 1),
+            "avg_work_hours": avg_wh,
+            "attendance_pct": att_pct,
+            "status_summary": "Excellent" if att_pct >= 95 else "Good" if att_pct >= 85 else "Needs Attention",
         })
     rows.sort(key=lambda x: x["attendance_pct"])
     return rows
