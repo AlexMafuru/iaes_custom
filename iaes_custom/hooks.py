@@ -246,10 +246,7 @@ doc_events = {
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
-app_include_js = [
-    "/assets/iaes_custom/js/id_filter_v2.js",
-    "/assets/iaes_custom/js/filter_patch.js"
-]
+
 
 fixtures = [
     {"doctype": "Report", "filters": [["report_name", "=", "Project Financial Report"]]},
