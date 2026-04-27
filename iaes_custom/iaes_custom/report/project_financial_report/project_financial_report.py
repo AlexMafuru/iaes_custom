@@ -3,16 +3,11 @@ from frappe import _
 from frappe.utils import flt, cstr, nowdate, date_diff
 
 
-def execute(filters=None):
-    if not filters:
-        filters = {}
-    if not filters.get("company"):
-        filters["company"] = frappe.db.get_single_value("Global Defaults", "default_company")
-    columns = get_columns()
-    data = get_data(filters)
-    chart = get_chart(data)
-    summary = get_report_summary(data)
-    return columns, data, None, chart, summary
+def get_conditions(filters):
+    conditions, values = [], {}
+    if filters.get("company"):
+        conditions.append("AND p.company = %(company)s")
+        values["company"] = filters["company"]
 
 
 def get_columns():
@@ -157,7 +152,7 @@ def get_data(filters):
             GROUP BY se.project
         ) ste_agg ON ste_agg.project = p.name
 
-        WHERE p.company = %(company)s
+        WHERE 1=1
           {conditions}
         ORDER BY p.creation DESC
     """.format(conditions=conditions), filter_values, as_dict=True)

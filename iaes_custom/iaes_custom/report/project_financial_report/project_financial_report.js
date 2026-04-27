@@ -1,6 +1,6 @@
 frappe.query_reports["Project Financial Report"] = {
     filters: [
-        { fieldname:"company",      label:__("Company"),             fieldtype:"Link",   options:"Company",  default:frappe.defaults.get_user_default("Company"), reqd:1 },
+        { fieldname:"company", label:__("Company"), fieldtype:"Link", options:"Company", default:frappe.defaults.get_user_default("Company") },
         { fieldname:"status",       label:__("Status"),              fieldtype:"Select", options:"\nOpen\nCompleted\nCancelled" },
         { fieldname:"customer",     label:__("Customer"),            fieldtype:"Link",   options:"Customer" },
         { fieldname:"project",      label:__("Project"),             fieldtype:"Link",   options:"Project" },
