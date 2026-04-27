@@ -3,11 +3,14 @@ from frappe import _
 from frappe.utils import flt, cstr, nowdate, date_diff
 
 
-def get_conditions(filters):
-    conditions, values = [], {}
-    if filters.get("company"):
-        conditions.append("AND p.company = %(company)s")
-        values["company"] = filters["company"]
+def execute(filters=None):
+    if not filters:
+        filters = {}
+    columns = get_columns()
+    data = get_data(filters)
+    chart = get_chart(data)
+    summary = get_report_summary(data)
+    return columns, data, None, chart, summary
 
 
 def get_columns():
@@ -80,63 +83,47 @@ def get_data(filters):
         FROM `tabProject` p
         JOIN `tabCompany` comp ON comp.name = p.company
 
-        /* Sales Orders — base_net_total is always in company currency */
         LEFT JOIN (
-            SELECT
-                project,
-                SUM(base_net_total) AS so_value,
-                COUNT(name)         AS so_count
+            SELECT project, SUM(base_net_total) AS so_value, COUNT(name) AS so_count
             FROM `tabSales Order`
-            WHERE docstatus = 1
-              AND project IS NOT NULL AND project != ''
+            WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) so_agg ON so_agg.project = p.name
 
-        /* Sales Invoices — all amounts converted to base currency */
         LEFT JOIN (
-            SELECT
-                project,
-                SUM(base_net_total)                                              AS sinv_value,
+            SELECT project,
+                SUM(base_net_total)                        AS sinv_value,
                 SUM(base_grand_total - outstanding_amount) AS sinv_paid,
                 SUM(outstanding_amount)                    AS sinv_out,
-                COUNT(name)                                                      AS sinv_count
+                COUNT(name)                                AS sinv_count
             FROM `tabSales Invoice`
-            WHERE docstatus = 1
-              AND project IS NOT NULL AND project != ''
+            WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) sinv_agg ON sinv_agg.project = p.name
 
-        /* Purchase Invoices — all amounts converted to base currency */
         LEFT JOIN (
-            SELECT
-                project,
-                SUM(base_net_total)                                              AS pinv_value,
+            SELECT project,
+                SUM(base_net_total)                        AS pinv_value,
                 SUM(base_grand_total - outstanding_amount) AS pinv_paid,
                 SUM(outstanding_amount)                    AS pinv_out,
-                COUNT(name)                                                      AS pinv_count
+                COUNT(name)                                AS pinv_count
             FROM `tabPurchase Invoice`
-            WHERE docstatus = 1
-              AND project IS NOT NULL AND project != ''
+            WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) pinv_agg ON pinv_agg.project = p.name
 
-        /* Expense Claims — always in local currency */
         LEFT JOIN (
-            SELECT
-                project,
+            SELECT project,
                 SUM(total_claimed_amount)    AS exp_value,
                 SUM(total_amount_reimbursed) AS exp_paid,
                 COUNT(name)                  AS exp_count
             FROM `tabExpense Claim`
-            WHERE docstatus = 1
-              AND project IS NOT NULL AND project != ''
+            WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) exp_agg ON exp_agg.project = p.name
 
-        /* Stock Entries — valuation always in base currency */
         LEFT JOIN (
-            SELECT
-                se.project,
+            SELECT se.project,
                 SUM(sed.amount)         AS stock_value,
                 COUNT(DISTINCT se.name) AS ste_count
             FROM `tabStock Entry` se
@@ -182,7 +169,10 @@ def get_data(filters):
 
 
 def get_conditions(filters):
-    conditions, values = [], {"company": filters.get("company")}
+    conditions, values = [], {}
+    if filters.get("company"):
+        conditions.append("AND p.company = %(company)s")
+        values["company"] = filters["company"]
     if filters.get("status"):
         conditions.append("AND p.status = %(status)s")
         values["status"] = filters["status"]
@@ -254,4 +244,4 @@ def get_chart(data):
         "barOptions": {"stacked": 0},
         "axisOptions": {"xIsSeries": True},
         "height": 280,
-    }   
+    }
