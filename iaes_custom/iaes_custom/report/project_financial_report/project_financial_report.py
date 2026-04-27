@@ -102,8 +102,8 @@ def get_data(filters):
             SELECT
                 project,
                 SUM(base_net_total)                                              AS sinv_value,
-                SUM(base_grand_total - outstanding_amount * COALESCE(conversion_rate, 1)) AS sinv_paid,
-                SUM(outstanding_amount * COALESCE(conversion_rate, 1))           AS sinv_out,
+                SUM(base_grand_total - outstanding_amount) AS sinv_paid,
+                SUM(outstanding_amount)                    AS sinv_out,
                 COUNT(name)                                                      AS sinv_count
             FROM `tabSales Invoice`
             WHERE docstatus = 1
@@ -116,8 +116,8 @@ def get_data(filters):
             SELECT
                 project,
                 SUM(base_net_total)                                              AS pinv_value,
-                SUM(base_grand_total - outstanding_amount * COALESCE(conversion_rate, 1)) AS pinv_paid,
-                SUM(outstanding_amount * COALESCE(conversion_rate, 1))           AS pinv_out,
+                SUM(base_grand_total - outstanding_amount) AS pinv_paid,
+                SUM(outstanding_amount)                    AS pinv_out,
                 COUNT(name)                                                      AS pinv_count
             FROM `tabPurchase Invoice`
             WHERE docstatus = 1
