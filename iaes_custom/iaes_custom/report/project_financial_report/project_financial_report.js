@@ -3,7 +3,7 @@ frappe.query_reports["Project Financial Report"] = {
         { fieldname:"company", label:__("Company"), fieldtype:"Link", options:"Company", default:frappe.defaults.get_user_default("Company") },
         { fieldname:"status",       label:__("Status"),              fieldtype:"Select", options:"\nOpen\nCompleted\nCancelled" },
         { fieldname:"customer",     label:__("Customer"),            fieldtype:"Link",   options:"Customer" },
-        { fieldname:"project",      label:__("Project"),             fieldtype:"Link",   options:"Project" },
+        { fieldname:"project", label:__("Project(s) — comma separated"), fieldtype:"Data" },
         { fieldname:"from_date",    label:__("Expected Start From"), fieldtype:"Date" },
         { fieldname:"to_date",      label:__("Expected End To"),     fieldtype:"Date" },
         { fieldname:"overdue_only", label:__("Overdue Only"),        fieldtype:"Check",  default:0 },
