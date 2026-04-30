@@ -179,8 +179,8 @@ def get_conditions(filters):
     if filters.get("customer"):
         conditions.append("AND p.customer = %(customer)s")
         values["customer"] = filters["customer"]
-if filters.get("project"):
-    projects = [p.strip() for p in filters["project"].split(",") if p.strip()]
+    if filters.get("project"):
+        projects = [p.strip() for p in filters["project"].split(",") if p.strip()]
     if len(projects) == 1:
         conditions.append("AND p.name = %(project)s")
         values["project"] = projects[0]
