@@ -181,14 +181,14 @@ def get_conditions(filters):
         values["customer"] = filters["customer"]
     if filters.get("project"):
         projects = [p.strip() for p in filters["project"].split(",") if p.strip()]
-    if len(projects) == 1:
-        conditions.append("AND p.name = %(project)s")
-        values["project"] = projects[0]
-    else:
-        placeholders = ", ".join([f"%(project_{i})s" for i in range(len(projects))])
-        conditions.append(f"AND p.name IN ({placeholders})")
-        for i, proj in enumerate(projects):
-            values[f"project_{i}"] = proj
+        if len(projects) == 1:
+            conditions.append("AND p.name = %(project)s")
+            values["project"] = projects[0]
+        else:
+            placeholders = ", ".join([f"%(project_{i})s" for i in range(len(projects))])
+            conditions.append(f"AND p.name IN ({placeholders})")
+            for i, proj in enumerate(projects):
+                values[f"project_{i}"] = proj
     if filters.get("from_date"):
         conditions.append("AND p.expected_start_date >= %(from_date)s")
         values["from_date"] = filters["from_date"]
