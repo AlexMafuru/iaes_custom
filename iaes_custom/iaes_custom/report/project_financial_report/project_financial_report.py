@@ -146,11 +146,18 @@ def get_data(filters):
 
     today = nowdate()
     for row in rows:
-        row["exp_pending"]    = flt(row.exp_value)  - flt(row.exp_paid)
-        row["total_costs"]    = flt(row.pinv_value) + flt(row.exp_value) + flt(row.stock_value)
-        row["gross_margin"]   = flt(row.sinv_value) - row["total_costs"]
-        row["margin_pct"]     = (row["gross_margin"] / row["sinv_value"] * 100) if row["sinv_value"] else 0.0
-        row["days_remaining"] = date_diff(row.expected_end_date, today) if row.expected_end_date else None
+    row["exp_pending"]  = flt(row.exp_value) - flt(row.exp_paid)
+    row["total_costs"]  = flt(row.pinv_value) + flt(row.exp_value) + flt(row.stock_value)
+
+    # Margin basis: SO for open/cancelled, SINV for completed
+    if row["status"] == "Completed":
+        margin_basis = flt(row.sinv_value)
+    else:
+        margin_basis = flt(row.so_value)
+
+    row["gross_margin"] = margin_basis - row["total_costs"]
+    row["margin_pct"]   = (row["gross_margin"] / margin_basis * 100) if margin_basis else 0.0
+    row["days_remaining"] = date_diff(row.expected_end_date, today) if row.expected_end_date else None
 
         if row["status"] == "Completed":
             row["timeline_status"] = "Done"
@@ -207,12 +214,14 @@ def get_report_summary(data):
     total_so     = sum(flt(r.get("so_value",     0)) for r in data)
     total_billed = sum(flt(r.get("sinv_value",   0)) for r in data)
     total_costs  = sum(flt(r.get("total_costs",  0)) for r in data)
+    
     total_margin = sum(flt(r.get("gross_margin", 0)) for r in data)
-    overdue = 0
-    for r in data:
-        if r.get("status") == "Open" and r.get("days_remaining") is not None and r["days_remaining"] < 0:
-            overdue += 1
-    margin_pct    = (total_margin / total_billed * 100) if total_billed else 0
+margin_basis_total = sum(
+    flt(r.get("sinv_value", 0)) if r.get("status") == "Completed"
+    else flt(r.get("so_value", 0))
+    for r in data
+)
+margin_pct = (total_margin / margin_basis_total * 100) if margin_basis_total else 0
     margin_color  = "green" if total_margin >= 0 else "red"
     pct_color     = "green" if margin_pct >= 15 else "orange"
     overdue_color = "red" if overdue else "green"
