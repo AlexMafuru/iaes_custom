@@ -59,59 +59,49 @@ def get_data(filters):
             p.expected_start_date,
             p.expected_end_date,
             comp.default_currency                 AS currency,
-
             COALESCE(so_agg.so_value,    0)       AS so_value,
             COALESCE(so_agg.so_count,    0)       AS so_count,
-
             COALESCE(sinv_agg.sinv_value,0)       AS sinv_value,
             COALESCE(sinv_agg.sinv_paid, 0)       AS sinv_paid,
             COALESCE(sinv_agg.sinv_out,  0)       AS sinv_outstanding,
             COALESCE(sinv_agg.sinv_count,0)       AS sinv_count,
-
             COALESCE(pinv_agg.pinv_value,0)       AS pinv_value,
             COALESCE(pinv_agg.pinv_paid, 0)       AS pinv_paid,
             COALESCE(pinv_agg.pinv_out,  0)       AS pinv_outstanding,
             COALESCE(pinv_agg.pinv_count,0)       AS pinv_count,
-
             COALESCE(exp_agg.exp_value,  0)       AS exp_value,
             COALESCE(exp_agg.exp_paid,   0)       AS exp_paid,
             COALESCE(exp_agg.exp_count,  0)       AS exp_count,
-
             COALESCE(ste_agg.stock_value,0)       AS stock_value,
             COALESCE(ste_agg.ste_count,  0)       AS ste_count
-
         FROM `tabProject` p
         JOIN `tabCompany` comp ON comp.name = p.company
-
         LEFT JOIN (
             SELECT project, SUM(base_net_total) AS so_value, COUNT(name) AS so_count
             FROM `tabSales Order`
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) so_agg ON so_agg.project = p.name
-
         LEFT JOIN (
             SELECT project,
-                SUM(base_net_total)                        AS sinv_value,
+                SUM(base_net_total)                               AS sinv_value,
                 SUM(GREATEST(base_grand_total - outstanding_amount, 0)) AS sinv_paid,
-                SUM(LEAST(outstanding_amount, base_grand_total))        AS sinv_out,
-                COUNT(name)                                AS sinv_count
+                SUM(LEAST(outstanding_amount, base_grand_total))  AS sinv_out,
+                COUNT(name)                                       AS sinv_count
             FROM `tabSales Invoice`
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) sinv_agg ON sinv_agg.project = p.name
-
         LEFT JOIN (
             SELECT project,
-                SUM(base_net_total)                        AS pinv_value,
-             SUM(GREATEST(base_grand_total - outstanding_amount, 0)) AS pinv_paid,
-             SUM(LEAST(outstanding_amount, base_grand_total))        AS pinv_out,
-                COUNT(name)                                AS pinv_count
+                SUM(base_net_total)                               AS pinv_value,
+                SUM(GREATEST(base_grand_total - outstanding_amount, 0)) AS pinv_paid,
+                SUM(LEAST(outstanding_amount, base_grand_total))  AS pinv_out,
+                COUNT(name)                                       AS pinv_count
             FROM `tabPurchase Invoice`
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) pinv_agg ON pinv_agg.project = p.name
-
         LEFT JOIN (
             SELECT project,
                 SUM(total_claimed_amount)    AS exp_value,
@@ -121,7 +111,6 @@ def get_data(filters):
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
             GROUP BY project
         ) exp_agg ON exp_agg.project = p.name
-
         LEFT JOIN (
             SELECT se.project,
                 SUM(sed.amount)         AS stock_value,
@@ -138,7 +127,6 @@ def get_data(filters):
                   'Send to Subcontractor')
             GROUP BY se.project
         ) ste_agg ON ste_agg.project = p.name
-
         WHERE 1=1
           {conditions}
         ORDER BY p.creation DESC
@@ -146,18 +134,18 @@ def get_data(filters):
 
     today = nowdate()
     for row in rows:
-    row["exp_pending"]  = flt(row.exp_value) - flt(row.exp_paid)
-    row["total_costs"]  = flt(row.pinv_value) + flt(row.exp_value) + flt(row.stock_value)
+        row["exp_pending"] = flt(row.exp_value) - flt(row.exp_paid)
+        row["total_costs"] = flt(row.pinv_value) + flt(row.exp_value) + flt(row.stock_value)
 
-    # Margin basis: SO for open/cancelled, SINV for completed
-    if row["status"] == "Completed":
-        margin_basis = flt(row.sinv_value)
-    else:
-        margin_basis = flt(row.so_value)
+        # Margin basis: SO for open/cancelled, SINV for completed
+        if row["status"] == "Completed":
+            margin_basis = flt(row.sinv_value)
+        else:
+            margin_basis = flt(row.so_value)
 
-    row["gross_margin"] = margin_basis - row["total_costs"]
-    row["margin_pct"]   = (row["gross_margin"] / margin_basis * 100) if margin_basis else 0.0
-    row["days_remaining"] = date_diff(row.expected_end_date, today) if row.expected_end_date else None
+        row["gross_margin"] = margin_basis - row["total_costs"]
+        row["margin_pct"] = (row["gross_margin"] / margin_basis * 100) if margin_basis else 0.0
+        row["days_remaining"] = date_diff(row.expected_end_date, today) if row.expected_end_date else None
 
         if row["status"] == "Completed":
             row["timeline_status"] = "Done"
@@ -192,10 +180,10 @@ def get_conditions(filters):
             conditions.append("AND p.name = %(project)s")
             values["project"] = projects[0]
         else:
-            placeholders = ", ".join([f"%(project_{i})s" for i in range(len(projects))])
-            conditions.append(f"AND p.name IN ({placeholders})")
+            placeholders = ", ".join(["%(project_{})s".format(i) for i in range(len(projects))])
+            conditions.append("AND p.name IN ({})".format(placeholders))
             for i, proj in enumerate(projects):
-                values[f"project_{i}"] = proj
+                values["project_{}".format(i)] = proj
     if filters.get("from_date"):
         conditions.append("AND p.expected_start_date >= %(from_date)s")
         values["from_date"] = filters["from_date"]
@@ -214,14 +202,17 @@ def get_report_summary(data):
     total_so     = sum(flt(r.get("so_value",     0)) for r in data)
     total_billed = sum(flt(r.get("sinv_value",   0)) for r in data)
     total_costs  = sum(flt(r.get("total_costs",  0)) for r in data)
-    
     total_margin = sum(flt(r.get("gross_margin", 0)) for r in data)
-margin_basis_total = sum(
-    flt(r.get("sinv_value", 0)) if r.get("status") == "Completed"
-    else flt(r.get("so_value", 0))
-    for r in data
-)
-margin_pct = (total_margin / margin_basis_total * 100) if margin_basis_total else 0
+    overdue = 0
+    for r in data:
+        if r.get("status") == "Open" and r.get("days_remaining") is not None and r["days_remaining"] < 0:
+            overdue += 1
+    margin_basis_total = sum(
+        flt(r.get("sinv_value", 0)) if r.get("status") == "Completed"
+        else flt(r.get("so_value", 0))
+        for r in data
+    )
+    margin_pct    = (total_margin / margin_basis_total * 100) if margin_basis_total else 0
     margin_color  = "green" if total_margin >= 0 else "red"
     pct_color     = "green" if margin_pct >= 15 else "orange"
     overdue_color = "red" if overdue else "green"
