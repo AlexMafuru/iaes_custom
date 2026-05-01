@@ -3,19 +3,22 @@ frappe.query_reports["Project Financial Report"] = {
         { fieldname:"company", label:__("Company"), fieldtype:"Link", options:"Company", default:frappe.defaults.get_user_default("Company") },
         { fieldname:"status",       label:__("Status"),              fieldtype:"Select", options:"\nOpen\nCompleted\nCancelled" },
         { fieldname:"customer",     label:__("Customer"),            fieldtype:"Link",   options:"Customer" },
-        { fieldname:"project", label:__("Project(s) — comma separated"), fieldtype:"Small Text" },
+        { fieldname:"project", label:__("Project(s) — comma separated"), fieldtype:"Data" },
         { fieldname:"from_date",    label:__("Expected Start From"), fieldtype:"Date" },
         { fieldname:"to_date",      label:__("Expected End To"),     fieldtype:"Date" },
         { fieldname:"overdue_only", label:__("Overdue Only"),        fieldtype:"Check",  default:0 },
     ],
 
     onload(report) {
-        report.page.add_inner_button(__("Sales Invoices"),    () => _open_list(report,"Sales Invoice",   "sales-invoice"),    __("View Documents"));
-        report.page.add_inner_button(__("Purchase Invoices"), () => _open_list(report,"Purchase Invoice","purchase-invoice"), __("View Documents"));
-        report.page.add_inner_button(__("Expense Claims"),    () => _open_list(report,"Expense Claim",   "expense-claim"),    __("View Documents"));
-        report.page.add_inner_button(__("Stock Entries"),     () => _open_list(report,"Stock Entry",     "stock-entry"),      __("View Documents"));
-        report.page.add_inner_button(__("Sales Orders"),      () => _open_list(report,"Sales Order",     "sales-order"),      __("View Documents"));
-    },
+    report.page.add_inner_button(__("Sales Invoices"),    () => _open_list(report,"Sales Invoice",   "sales-invoice"),    __("View Documents"));
+    report.page.add_inner_button(__("Purchase Invoices"), () => _open_list(report,"Purchase Invoice","purchase-invoice"), __("View Documents"));
+    report.page.add_inner_button(__("Expense Claims"),    () => _open_list(report,"Expense Claim",   "expense-claim"),    __("View Documents"));
+    report.page.add_inner_button(__("Stock Entries"),     () => _open_list(report,"Stock Entry",     "stock-entry"),      __("View Documents"));
+    report.page.add_inner_button(__("Sales Orders"),      () => _open_list(report,"Sales Order",     "sales-order"),      __("View Documents"));
+    setTimeout(() => {
+        $('input[data-fieldname="project"]').removeAttr('maxlength');
+    }, 500);
+},
 
     formatter(value, row, column, data, default_formatter) {
         if (!data) return default_formatter(value, row, column, data);
