@@ -1,0 +1,75 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "creation": "2026-05-02 00:00:00.000000",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [
+  {
+   "default": "",
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "mandatory": 1,
+   "options": "Project"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "mandatory": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "mandatory": 1
+  },
+  {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Scope",
+   "mandatory": 0,
+   "options": "\nAC\nElectrical\nPlumbing\nGenerator\nStore"
+  },
+  {
+   "fieldname": "hq_or_zone",
+   "fieldtype": "Select",
+   "label": "HQ / Dar Zone",
+   "mandatory": 0,
+   "options": "\nHQ\nDar Zone"
+  },
+  {
+   "fieldname": "show_unbilled_only",
+   "fieldtype": "Check",
+   "label": "Show Unbilled Only",
+   "mandatory": 0
+  },
+  {
+   "fieldname": "markup_percent",
+   "fieldtype": "Float",
+   "label": "Markup % (for SINV preview)",
+   "mandatory": 0,
+   "default": 0
+  }
+ ],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "",
+ "modified": "2026-05-02 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IAES Custom",
+ "name": "NMB HQ Monthly Billing",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Material Request",
+ "report_name": "NMB HQ Monthly Billing",
+ "report_type": "Script Report",
+ "roles": [
+  {"role": "Accounts Manager"},
+  {"role": "Accounts User"},
+  {"role": "Projects Manager"},
+  {"role": "System Manager"}
+ ]
+}
