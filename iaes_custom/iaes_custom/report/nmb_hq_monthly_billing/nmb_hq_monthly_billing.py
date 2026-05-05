@@ -60,9 +60,9 @@ def execute(filters=None):
     columns = _build_columns()
     data = _build_data(filters)
 
-    # Persist computed values back to MREQ Item so Generate Quotation
-    # can read them without recomputing
-    _persist_pricing_to_mreq(data)
+    # No persistence to MREQ Item — pricing is computed on the fly each run.
+    # The MREQ remains a clean procurement document. Sell-price / margin logic
+    # lives only in the report and the generated Quotation.
 
     return columns, data
 
@@ -178,8 +178,7 @@ def _fetch_mreq_lines(filters):
             mri.custom_scope                      AS scope,
             mr.custom_hq_or_zone                  AS hq_zone,
             mri.project                           AS project,
-            mri.custom_quoted_in_qtn              AS qtn,
-            mri.custom_final_price                AS prior_final_price
+            mri.custom_quoted_in_qtn              AS qtn
         FROM `tabMaterial Request` mr
         INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
         WHERE mr.docstatus = 1
@@ -479,11 +478,10 @@ def _compose_row(sr, line, pinv, po_list, prec_list, dn_list, ste_data, exp_data
         final_price = target_price
         comment = "Not in contract – market price + true 20% margin"
 
-    # Honour prior accountant override
-    if line.prior_final_price and flt(line.prior_final_price) > 0:
-        if not line.qtn:
-            final_price = flt(line.prior_final_price)
-            comment += " | overridden by accountant"
+    # No accountant override branch — pricing is computed on the fly.
+    # If you need to override a price, edit it on the generated Quotation
+    # before submitting. The Quotation is the single source of truth for
+    # the customer-facing rate.
 
     qty_delivered = flt(dn_list.get("qty_delivered", 0)) if isinstance(dn_list, dict) else 0
     balance = max(qty_ordered - qty_delivered, 0)
@@ -545,65 +543,9 @@ def _compute_status(line, cost, qty_paid_or_issued, qty_delivered):
 
 
 # ---------------------------------------------------------------------------
-# Persistence — write computed values back to MREQ Item
+# (No persistence layer — prices are computed on the fly each report run.
+# The MREQ Item stays a clean procurement document. Single source of truth
+# for cost lives in PINV / EXP Claim / STE; for sell-price lives in the
+# NMB Contract Price doctype + this report's pricing logic. Any price
+# override happens on the generated Quotation, not on the MREQ.)
 # ---------------------------------------------------------------------------
-def _persist_pricing_to_mreq(rows):
-    """Save Unit Sell Price, Comment, Final Price (if not overridden) per line."""
-    for row in rows:
-        mreq_item_name = row.get("mreq_item_name")
-        if not mreq_item_name:
-            continue
-        try:
-            updates = {
-                "custom_unit_sell_price": flt(row.get("unit_sell_price")),
-                "custom_pricing_comment": row.get("pricing_comment") or "",
-            }
-            existing_final = frappe.db.get_value(
-                "Material Request Item", mreq_item_name, "custom_final_price"
-            )
-            if not existing_final or flt(existing_final) == 0:
-                updates["custom_final_price"] = flt(row.get("final_price"))
-
-            frappe.db.set_value(
-                "Material Request Item", mreq_item_name,
-                updates, update_modified=False
-            )
-        except Exception as e:
-            frappe.log_error(
-                f"Failed to persist pricing for {mreq_item_name}: {e}",
-                "NMB Billing Report"
-            )
-
-    frappe.db.commit()
-
-
-# ---------------------------------------------------------------------------
-# Inline edit handler — called from JS when accountant edits Final Price
-# ---------------------------------------------------------------------------
-@frappe.whitelist()
-def update_final_price(mreq_item_name, final_price):
-    """Save accountant override on Final Price."""
-    if not mreq_item_name:
-        frappe.throw(_("MREQ Item reference is missing."))
-
-    fp = flt(final_price)
-    if fp < 0:
-        frappe.throw(_("Final Price cannot be negative."))
-
-    # Don't allow editing if already on a submitted Quotation
-    qtn = frappe.db.get_value(
-        "Material Request Item", mreq_item_name, "custom_quoted_in_qtn"
-    )
-    if qtn:
-        qtn_status = frappe.db.get_value("Quotation", qtn, "docstatus")
-        if qtn_status == 1:
-            frappe.throw(
-                _("This line is already on submitted Quotation {0}.").format(qtn)
-            )
-
-    frappe.db.set_value(
-        "Material Request Item", mreq_item_name,
-        "custom_final_price", fp, update_modified=False
-    )
-    frappe.db.commit()
-    return {"ok": True, "saved_value": fp}

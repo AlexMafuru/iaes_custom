@@ -27,18 +27,37 @@ DEFAULT_QUOTATION_TO = "Customer"
 
 
 @frappe.whitelist()
-def generate(project, from_date, to_date, mreq_item_names):
-    """Generate one draft Quotation containing the listed MREQ Item lines."""
-    if isinstance(mreq_item_names, str):
-        # Frappe sometimes passes JSON
-        import json
-        mreq_item_names = json.loads(mreq_item_names)
+def generate(project, from_date, to_date, lines_payload):
+    """Generate one draft Quotation containing the supplied MREQ Item lines.
 
-    if not mreq_item_names:
+    lines_payload: JSON-encoded list of dicts, one per row from the report.
+        Each dict must contain:
+            mreq_item_name  (str)  — the MREQ Item record name
+            final_price     (float) — the report-computed sell price
+            pricing_comment (str)  — optional, audit text
+        Other fields on the MREQ Item (item_code, qty, uom, etc) are read
+        from the database to ensure they're authoritative.
+    """
+    if isinstance(lines_payload, str):
+        import json
+        lines_payload = json.loads(lines_payload)
+
+    if not lines_payload:
         frappe.throw(_("No MREQ Item lines passed."))
 
+    # Build a fast lookup from MREQ Item name → computed price
+    price_by_mreq_item = {
+        row.get("mreq_item_name"): {
+            "final_price": flt(row.get("final_price")),
+            "pricing_comment": row.get("pricing_comment") or "",
+        }
+        for row in lines_payload
+        if row.get("mreq_item_name")
+    }
+    mreq_item_names = list(price_by_mreq_item.keys())
+
     customer = _resolve_customer(project)
-    lines = _fetch_lines_for_qtn(mreq_item_names, project)
+    lines = _fetch_lines_for_qtn(mreq_item_names, project, price_by_mreq_item)
 
     if not lines:
         frappe.throw(_("None of the selected lines are eligible for quotation."))
@@ -80,8 +99,11 @@ def _resolve_customer(project):
     return customer
 
 
-def _fetch_lines_for_qtn(mreq_item_names, project):
-    """Read each MREQ Item with its persisted pricing values."""
+def _fetch_lines_for_qtn(mreq_item_names, project, price_by_mreq_item):
+    """Read each MREQ Item, then attach the report-computed price from the
+    JS payload. We don't trust persisted prices on MREQ Item — they don't
+    exist in the new design.
+    """
     rows = frappe.db.sql("""
         SELECT
             mri.name                            AS mreq_item_name,
@@ -91,14 +113,13 @@ def _fetch_lines_for_qtn(mreq_item_names, project):
             mri.description                     AS description,
             mri.qty                             AS qty,
             mri.uom                             AS uom,
-            mri.custom_final_price              AS final_price,
             mri.custom_quoted_in_qtn            AS already_quoted,
             mr.custom_approved_requisition_no   AS approved_requisition_no
         FROM `tabMaterial Request Item` mri
         INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent
         WHERE mri.name IN %(names)s
           AND mr.docstatus = 1
-          AND COALESCE(mri.project, mr.project) = %(project)s
+          AND mri.project = %(project)s
     """, {"names": mreq_item_names, "project": project}, as_dict=True)
 
     eligible = []
@@ -109,9 +130,16 @@ def _fetch_lines_for_qtn(mreq_item_names, project):
         if r.already_quoted:
             skipped_already_quoted.append(r.mreq_item_name)
             continue
-        if not r.final_price or flt(r.final_price) <= 0:
+
+        # Attach the price from the JS payload
+        payload_entry = price_by_mreq_item.get(r.mreq_item_name) or {}
+        r.final_price = flt(payload_entry.get("final_price"))
+        r.pricing_comment = payload_entry.get("pricing_comment") or ""
+
+        if r.final_price <= 0:
             skipped_no_price.append(r.mreq_item_name)
             continue
+
         eligible.append(r)
 
     if skipped_already_quoted:
@@ -121,7 +149,7 @@ def _fetch_lines_for_qtn(mreq_item_names, project):
         )
     if skipped_no_price:
         frappe.msgprint(
-            _("Skipped {0} lines with no Final Price set.").format(len(skipped_no_price)),
+            _("Skipped {0} lines with no computed Final Price.").format(len(skipped_no_price)),
             alert=True
         )
 

@@ -71,107 +71,24 @@ frappe.query_reports["NMB HQ Monthly Billing"] = {
             value = `<span style="display:block; padding:2px 4px; background:${color};">${value}</span>`;
         }
 
-        // Highlight the Final Price column to signal it's editable
-        if (column.fieldname === "final_price" && data.status !== "Quoted") {
-            value = `<span style="font-weight:600; cursor:pointer; border-bottom:1px dashed #888;" title="Click to edit">${value}</span>`;
-        }
-
         return value;
     },
 
     onload: function (report) {
-        // "Generate Quotation" button
+        // "Generate Quotation" button — pulls selected rows into a draft QTN
         report.page.add_inner_button(__("Generate Quotation"), function () {
             generate_quotation(report);
         }).addClass("btn-primary");
-
-        // "Refresh Pricing" — recomputes prices without touching overrides
-        report.page.add_inner_button(__("Refresh Pricing"), function () {
-            report.refresh();
-        });
-
-        // Hook inline editing on Final Price
-        setTimeout(() => attach_inline_edit(report), 800);
-    },
-
-    after_datatable_render: function (datatable) {
-        // Re-attach inline edit after each render
-        const report = frappe.query_report;
-        if (report) attach_inline_edit(report);
     },
 };
 
 
 // ---------------------------------------------------------------------------
-// Inline edit on Final Price column
+// (Inline edit on Final Price was removed in favour of computing prices on
+// the fly each report run. To override a price, edit the rate on the
+// generated Quotation before submitting — the QTN is the single source of
+// truth for the customer-facing rate.)
 // ---------------------------------------------------------------------------
-function attach_inline_edit(report) {
-    const grid = $(report.page.main).find(".dt-scrollable, .datatable");
-    if (!grid.length) return;
-
-    grid.off("click.fp_edit");
-    grid.on("click.fp_edit", "td", function (e) {
-        const $td = $(this);
-        const col_idx = $td.index();
-        const datatable = report.datatable;
-        if (!datatable) return;
-
-        // Find which column was clicked
-        const col = datatable.datamanager.columns[col_idx];
-        if (!col || col.fieldname !== "final_price") return;
-
-        const row_idx = $td.closest("tr").attr("data-row-index");
-        if (row_idx == null) return;
-
-        const row = datatable.datamanager.data[parseInt(row_idx)];
-        if (!row || !row.mreq_item_name) return;
-        if (row.status === "Quoted") {
-            frappe.show_alert({
-                message: __("Cannot edit price on already-quoted line."),
-                indicator: "orange",
-            });
-            return;
-        }
-
-        e.stopPropagation();
-        prompt_final_price_edit(row, report);
-    });
-}
-
-
-function prompt_final_price_edit(row, report) {
-    frappe.prompt(
-        [
-            {
-                fieldname: "final_price",
-                label: __("Final Price (TZS)"),
-                fieldtype: "Currency",
-                default: row.final_price,
-                reqd: 1,
-            },
-        ],
-        function (values) {
-            frappe.call({
-                method: "iaes_custom.iaes_custom.iaes_custom.report.nmb_hq_monthly_billing.nmb_hq_monthly_billing.update_final_price",
-                args: {
-                    mreq_item_name: row.mreq_item_name,
-                    final_price: values.final_price,
-                },
-                callback: function (r) {
-                    if (r.message && r.message.ok) {
-                        frappe.show_alert({
-                            message: __("Final Price updated. Refreshing report…"),
-                            indicator: "green",
-                        });
-                        report.refresh();
-                    }
-                },
-            });
-        },
-        __("Edit Final Price"),
-        __("Save")
-    );
-}
 
 
 // ---------------------------------------------------------------------------
@@ -221,7 +138,11 @@ function generate_quotation(report) {
                     project: filters.project,
                     from_date: filters.from_date,
                     to_date: filters.to_date,
-                    mreq_item_names: ready.map(r => r.mreq_item_name),
+                    lines_payload: ready.map(r => ({
+                        mreq_item_name: r.mreq_item_name,
+                        final_price: r.final_price,
+                        pricing_comment: r.pricing_comment || "",
+                    })),
                 },
                 freeze: true,
                 freeze_message: __("Creating Quotation…"),
