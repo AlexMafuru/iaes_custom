@@ -1,533 +1,609 @@
-# -*- coding: utf-8 -*-
-# Copyright (c) 2026, IAES and contributors
-# License: MIT
-#
-# NMB HQ Monthly Billing — Script Report
-# ---------------------------------------
-# Reconciles the HQ procurement-to-invoicing flow:
-#
-#   Material Request (MREQ)
-#       │   signed off by NMB Bank HQ
-#       ▼
-#   ┌──────────────────────────────────────────────────────────┐
-#   │  Procurement (one of two paths):                         │
-#   │    (a) Expense Claim (EXP)   — engineer reimbursement    │
-#   │    (b) PO → PINV → PREC      — formal supplier invoice   │
-#   └──────────────────────────────────────────────────────────┘
-#       │
-#       ▼
-#   Delivery Note (Dnote)        — qty actually delivered to NMB site
-#       │
-#       ▼
-#   Sales Invoice (SINV) to NMB  — billed at: actual cost + markup %
-#
-# Output mirrors the legacy spreadsheet (nmb_hq_report_format.xlsx) plus a
-# parallel "EXP" column next to "PINV" so each row shows which procurement
-# path supplied the cost. One row per Material Request Item, grouped by
-# Scope, with subtotals → VAT 18% → Grand Total.
-#
-# IMPORTANT — field-name TODOs:
-#   This file assumes a few custom fields. Confirm or adjust before deploy.
-#
-#     • Material Request Item.custom_scope     (Data / Select)
-#         Falls back to the linked Item Group if missing.
-#     • Material Request.custom_hq_or_zone     (Select: HQ / Dar Zone)
-#         Splits HQ vs Dar Zone deliveries within the same report.
-#     • Material Request Item.custom_part_no   (Data) — optional MFR part #.
-#     • Expense Claim Detail.custom_material_request_item   (Link → MR Item)
-#         Required if you want EXP-CLAIM costs to attach to the right MREQ
-#         line. Without it, expense-claim spend won't appear on this report.
-#     • Sales Invoice Item.material_request    (Data / Link)
-#         Required for the SINV column to populate. Fallbacks are wrapped
-#         in try/except so the report still loads if absent.
-#
-#   Search for `# TODO[fields]` to find every spot that depends on these.
+"""
+NMB HQ Monthly Billing — Server-side Report Logic
+==================================================
 
-from __future__ import unicode_literals
+Frappe Query Report. Surfaces every MREQ line for the project, computes the
+full pricing analysis (cost from PINV/EXP/STE → margin test → Final Price),
+and flags status so the accountant can identify what's ready to quote.
+
+ASSUMPTIONS (patch these if wrong on first deploy):
+    1. Contract Price List doctype is named exactly "Contract Price List"
+       with fields: item_code, project, contract_price_vat_excl,
+       effective_from, effective_to.
+    2. Standard ERPNext linkage:
+         - Purchase Invoice Item.material_request_item → Material Request Item.name
+         - Purchase Order Item.material_request_item   → Material Request Item.name
+         - Delivery Note Item.against_sales_order      → Sales Order
+       and DN to MREQ via SO is handled by joining through Sales Order Item.
+    3. STE has no native link to MREQ — matched on item_code + project +
+       posting date in window.
+    4. EXP Claim has no native link to MREQ — matched on
+       Expense Claim.project + description LIKE %item_name%.
+    5. Cost basis order: PINV (status='Paid') → STE valuation_rate → EXP fuzzy.
+    6. 20% threshold:
+         - Test:  reference_price >= cost * 1.20  (markup test)
+         - Final: cost / 0.80 when generating from cost (true 20% margin)
+
+PLACEMENT:
+    /apps/<your_app>/<your_app>/<module>/report/nmb_hq_monthly_billing/
+        nmb_hq_monthly_billing.py
+        nmb_hq_monthly_billing.js
+        nmb_hq_monthly_billing.json   (auto-created via bench)
+"""
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, formatdate
-
-VAT_RATE = 0.18  # 18% Tanzanian VAT
-
-SCOPE_ORDER = ["AC", "Electrical", "Plumbing", "Generator", "Store"]
+from frappe.utils import flt, getdate, add_days
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#   ENTRY POINT
-# ════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# Configuration — patch here if assumptions are wrong
+# ---------------------------------------------------------------------------
+CONTRACT_PRICE_DOCTYPE = "NMB Contract Price"   # exact doctype name (verified from doctype JSON)
+CONTRACT_FIELD_ITEM_CODE = "item_code"
+CONTRACT_FIELD_PROJECT = "project"
+CONTRACT_FIELD_PRICE = "contract_unit_price"    # was contract_price_vat_excl in earlier draft
+CONTRACT_FIELD_FROM = "effective_from"
+CONTRACT_FIELD_TO = "effective_to"
 
+THRESHOLD_MARKUP = 1.20  # cost * 1.20 = threshold contract price must beat
+TARGET_MARGIN = 0.80     # cost / 0.80 = price giving true 20% margin
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 def execute(filters=None):
     filters = frappe._dict(filters or {})
     _validate_filters(filters)
 
-    columns = get_columns()
-    raw_rows = _fetch_material_request_lines(filters)
-    data = _build_grouped_rows(raw_rows, filters)
+    columns = _build_columns()
+    data = _build_data(filters)
+
+    # Persist computed values back to MREQ Item so Generate Quotation
+    # can read them without recomputing
+    _persist_pricing_to_mreq(data)
 
     return columns, data
 
 
+# ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
 def _validate_filters(filters):
     if not filters.get("project"):
         frappe.throw(_("Project is required."))
     if not filters.get("from_date") or not filters.get("to_date"):
-        frappe.throw(_("From Date and To Date are required."))
-    if getdate(filters.from_date) > getdate(filters.to_date):
-        frappe.throw(_("From Date cannot be after To Date."))
+        frappe.throw(_("From and To dates are required."))
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#   COLUMNS
-# ════════════════════════════════════════════════════════════════════════════
-
-def get_columns():
+# ---------------------------------------------------------------------------
+# Columns — 26 columns matching the operational ledger spec
+# ---------------------------------------------------------------------------
+def _build_columns():
     return [
-        {"label": _("No."),               "fieldname": "no",                "fieldtype": "Data",     "width":  50},
-        {"label": _("Description"),       "fieldname": "description",       "fieldtype": "Data",     "width": 260},
-        {"label": _("Part No."),          "fieldname": "part_no",           "fieldtype": "Data",     "width": 100},
-        {"label": _("Scope"),             "fieldname": "scope",             "fieldtype": "Data",     "width": 100},
-        {"label": _("Delivery Location"), "fieldname": "delivery_location", "fieldtype": "Data",     "width": 130},
-        {"label": _("HQ/Zone"),           "fieldname": "hq_or_zone",        "fieldtype": "Data",     "width":  90},
-        {"label": _("Date"),              "fieldname": "date",              "fieldtype": "Date",     "width":  90},
-        {"label": _("Req"),               "fieldname": "req",               "fieldtype": "Link",     "options": "Material Request", "width": 140},
-        {"label": _("Qty Ordered"),       "fieldname": "qty_ordered",       "fieldtype": "Float",    "width":  90, "precision": 2},
-        {"label": _("Qty Delivered"),     "fieldname": "qty_delivered",     "fieldtype": "Float",    "width": 100, "precision": 2},
-        {"label": _("Balance"),           "fieldname": "balance",           "fieldtype": "Float",    "width":  80, "precision": 2},
-        {"label": _("UoM"),               "fieldname": "uom",               "fieldtype": "Data",     "width":  70},
-        {"label": _("Dnote No."),         "fieldname": "dnote",             "fieldtype": "Link",     "options": "Delivery Note",   "width": 140},
-        {"label": _("PINV"),              "fieldname": "pinv",              "fieldtype": "Link",     "options": "Purchase Invoice","width": 140},
-        {"label": _("EXP"),               "fieldname": "exp",               "fieldtype": "Link",     "options": "Expense Claim",   "width": 140},
-        {"label": _("Unit Cost"),         "fieldname": "unit_cost",         "fieldtype": "Currency", "width": 110},
-        {"label": _("Total Purchase"),    "fieldname": "amount",            "fieldtype": "Currency", "width": 130},
-        {"label": _("Supplier"),          "fieldname": "supplier",          "fieldtype": "Link",     "options": "Supplier",        "width": 150},
-        {"label": _("SINV"),              "fieldname": "sinv",              "fieldtype": "Link",     "options": "Sales Invoice",   "width": 140},
-        {"label": _("Invoice Month"),     "fieldname": "invoice_month",     "fieldtype": "Data",     "width": 110},
+        {"label": _("No."), "fieldname": "sr_no", "fieldtype": "Int", "width": 50},
+        {"label": _("Date"), "fieldname": "transaction_date", "fieldtype": "Date", "width": 95},
+        {"label": _("Req No."), "fieldname": "approved_requisition_no", "fieldtype": "Data", "width": 110},
+        {"label": _("MREQ"), "fieldname": "mreq", "fieldtype": "Link", "options": "Material Request", "width": 120},
+        {"label": _("MREQ Item Row"), "fieldname": "mreq_item_name", "fieldtype": "Data", "width": 130, "hidden": 1},
+        {"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 200},
+        {"label": _("Item Code"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 140},
+        {"label": _("Qty Ordered"), "fieldname": "qty_ordered", "fieldtype": "Float", "width": 90, "precision": 2},
+        {"label": _("UoM"), "fieldname": "uom", "fieldtype": "Data", "width": 60},
+        {"label": _("Scope"), "fieldname": "scope", "fieldtype": "Data", "width": 100},
+        {"label": _("HQ/Zone"), "fieldname": "hq_zone", "fieldtype": "Data", "width": 100},
+        {"label": _("PO"), "fieldname": "po", "fieldtype": "Data", "width": 110},
+        {"label": _("PINV"), "fieldname": "pinv", "fieldtype": "Data", "width": 110},
+        {"label": _("EXP"), "fieldname": "exp", "fieldtype": "Data", "width": 110},
+        {"label": _("STE"), "fieldname": "ste", "fieldtype": "Data", "width": 110},
+        {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Data", "width": 110},
+        {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Data", "width": 110},
+        {"label": _("Qty Delivered"), "fieldname": "qty_delivered", "fieldtype": "Float", "width": 90, "precision": 2},
+        {"label": _("Balance"), "fieldname": "balance", "fieldtype": "Float", "width": 80, "precision": 2},
+        {"label": _("Unit Cost"), "fieldname": "unit_cost", "fieldtype": "Currency", "options": "currency", "width": 110},
+        {"label": _("Total Purchase"), "fieldname": "total_purchase", "fieldtype": "Currency", "options": "currency", "width": 130},
+        {"label": _("Supplier"), "fieldname": "supplier", "fieldtype": "Data", "width": 150},
+        {"label": _("Unit Sell Price"), "fieldname": "unit_sell_price", "fieldtype": "Currency", "options": "currency", "width": 120},
+        {"label": _("Comments"), "fieldname": "pricing_comment", "fieldtype": "Data", "width": 220},
+        {"label": _("Final Price"), "fieldname": "final_price", "fieldtype": "Currency", "options": "currency", "width": 120},
+        {"label": _("Status"), "fieldname": "status", "fieldtype": "Data", "width": 130},
+        {"label": _("QTN"), "fieldname": "qtn", "fieldtype": "Link", "options": "Quotation", "width": 110},
+        {"label": _("Project"), "fieldname": "project", "fieldtype": "Link", "options": "Project", "width": 140, "hidden": 1},
+        {"label": _("Currency"), "fieldname": "currency", "fieldtype": "Data", "width": 60, "hidden": 1},
     ]
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#   DATA FETCH
-# ════════════════════════════════════════════════════════════════════════════
-
-def _fetch_material_request_lines(filters):
-    """
-    Return a flat list of dict rows, one per Material Request Item, enriched
-    with delivered qty, PINV/supplier/cost, and SINV/invoice month.
-    """
-
-    # --- 1. Material Requests in scope ----------------------------------------
-    mr_filters = {
-        "project":          filters.project,
-        "transaction_date": ["between", [filters.from_date, filters.to_date]],
-        "docstatus":        1,
-    }
-
-    # TODO[fields]: rename custom_hq_or_zone if your custom field uses a
-    # different fieldname.
-    if filters.get("hq_or_zone"):
-        mr_filters["custom_hq_or_zone"] = filters.hq_or_zone
-
-    mrs = frappe.get_all(
-        "Material Request",
-        filters=mr_filters,
-        fields=[
-            "name",
-            "transaction_date",
-            "set_warehouse",
-            # TODO[fields]: include only the custom fields that actually exist.
-            # If "custom_hq_or_zone" doesn't exist, REMOVE it from this list
-            # AND from the filter block above, otherwise frappe will raise.
-            "custom_hq_or_zone",
-        ],
-        order_by="transaction_date asc, name asc",
-    )
-
-    if not mrs:
+# ---------------------------------------------------------------------------
+# Main data assembly
+# ---------------------------------------------------------------------------
+def _build_data(filters):
+    mreq_lines = _fetch_mreq_lines(filters)
+    if not mreq_lines:
         return []
 
-    mr_names = [m.name for m in mrs]
-    mr_by_name = {m.name: m for m in mrs}
+    line_names = [line.mreq_item_name for line in mreq_lines]
 
-    # --- 2. Material Request Items ---------------------------------------------
-    items = frappe.get_all(
-        "Material Request Item",
-        filters={"parent": ["in", mr_names]},
-        fields=[
-            "name",
-            "parent",
-            "idx",
-            "item_code",
-            "item_name",
-            "description",
-            "qty",
-            "ordered_qty",      # qty already covered by PO/PINV
-            "received_qty",     # qty received via Purchase Receipt
-            "uom",
-            "warehouse",
-            # TODO[fields]: comment out any of these that don't exist in your
-            # iaes_custom customisations.
-            "custom_scope",
-            "custom_part_no",
-        ],
-        order_by="parent, idx",
-    )
+    pinv_map = _fetch_pinv_for_lines(line_names)
+    po_map = _fetch_po_for_lines(line_names)
+    prec_map = _fetch_prec_for_lines(line_names)
+    dn_map = _fetch_dn_for_lines(line_names)
+    ste_map = _fetch_ste_matches(mreq_lines, filters)
+    exp_map = _fetch_exp_matches(mreq_lines, filters)
+    contract_map = _fetch_contract_prices(mreq_lines, filters)
 
-    # --- 3. Item Group (fallback for Scope) ------------------------------------
-    item_codes = list({i.item_code for i in items if i.item_code})
-    item_groups = {}
-    if item_codes:
-        for r in frappe.get_all(
-            "Item",
-            filters={"name": ["in", item_codes]},
-            fields=["name", "item_group"],
-        ):
-            item_groups[r.name] = r.item_group
-
-    # --- 4. Delivered qty + Delivery Note linkage ------------------------------
-    # Match Delivery Note Items back to Material Request via the standard
-    # `material_request` field on `tabDelivery Note Item`.
-    delivered = {}  # key: (mr_name, item_code) → {"qty": x, "dnote": "DN-..."}
-    if mr_names:
-        dn_rows = frappe.db.sql("""
-            SELECT
-                dni.material_request          AS mr,
-                dni.material_request_item     AS mri,
-                dni.item_code                 AS item_code,
-                dni.qty                       AS qty,
-                dni.parent                    AS dnote
-            FROM `tabDelivery Note Item` dni
-            INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
-            WHERE dni.material_request IN %(mrs)s
-              AND dn.docstatus = 1
-        """, {"mrs": tuple(mr_names)}, as_dict=True)
-
-        for r in dn_rows:
-            key = r.mri or (r.mr, r.item_code)
-            entry = delivered.setdefault(key, {"qty": 0.0, "dnotes": []})
-            entry["qty"] += flt(r.qty)
-            if r.dnote not in entry["dnotes"]:
-                entry["dnotes"].append(r.dnote)
-
-    # --- 5. Purchase Invoice / supplier / unit cost ----------------------------
-    purchase = {}  # key: mri name → list of {"pinv", "supplier", "rate", "amount"}
-    if mr_names:
-        pi_rows = frappe.db.sql("""
-            SELECT
-                pii.material_request          AS mr,
-                pii.material_request_item     AS mri,
-                pii.item_code                 AS item_code,
-                pii.rate                      AS rate,
-                pii.qty                       AS qty,
-                pii.amount                    AS amount,
-                pii.parent                    AS pinv,
-                pi.supplier                   AS supplier
-            FROM `tabPurchase Invoice Item` pii
-            INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
-            WHERE pii.material_request IN %(mrs)s
-              AND pi.docstatus = 1
-        """, {"mrs": tuple(mr_names)}, as_dict=True)
-
-        for r in pi_rows:
-            key = r.mri or (r.mr, r.item_code)
-            purchase.setdefault(key, []).append(r)
-
-    # --- 5b. Expense Claim path ------------------------------------------------
-    # Engineers sometimes buy materials with personal cash and reimburse via
-    # Expense Claim. The standard Expense Claim Detail doctype has no native
-    # link to Material Request, so this requires a custom field
-    # `custom_material_request_item` on tabExpense Claim Detail.
-    #
-    # TODO[fields]: rename if your custom field uses a different fieldname.
-    expense = {}  # key: mri name → list of {"exp", "supplier", "rate", "amount"}
-    if mr_names:
-        try:
-            ec_rows = frappe.db.sql("""
-                SELECT
-                    ecd.custom_material_request_item AS mri,
-                    ecd.description                  AS supplier_text,
-                    ecd.amount                       AS amount,
-                    ec.name                          AS exp,
-                    ec.posting_date                  AS posting_date
-                FROM `tabExpense Claim Detail` ecd
-                INNER JOIN `tabExpense Claim` ec ON ec.name = ecd.parent
-                WHERE ecd.custom_material_request_item IN %(mris)s
-                  AND ec.docstatus = 1
-            """, {"mris": tuple(i.name for i in items) or ("__none__",)}, as_dict=True)
-        except Exception:
-            # Custom field not yet created → skip the EXP path silently.
-            ec_rows = []
-
-        for r in ec_rows:
-            expense.setdefault(r.mri, []).append(r)
-
-    # --- 6. Sales Invoice linkage ----------------------------------------------
-    # TODO[fields]: This assumes Sales Invoice Item carries either:
-    #   (a) a custom `material_request` reference back to the MREQ, OR
-    #   (b) a custom `material_request_item` reference back to the MR row.
-    # Adjust the WHERE clause to match your actual link.
-    sinv_lookup = {}  # key: mri or (mr, item_code) → {"sinv", "month"}
-    if mr_names:
-        try:
-            si_rows = frappe.db.sql("""
-                SELECT
-                    sii.material_request          AS mr,
-                    sii.material_request_item     AS mri,
-                    sii.item_code                 AS item_code,
-                    sii.parent                    AS sinv,
-                    si.posting_date               AS posting_date
-                FROM `tabSales Invoice Item` sii
-                INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
-                WHERE sii.material_request IN %(mrs)s
-                  AND si.docstatus = 1
-            """, {"mrs": tuple(mr_names)}, as_dict=True)
-        except Exception:
-            # If the `material_request` field doesn't exist on Sales Invoice
-            # Item, fall back to no SINV linkage rather than crashing.
-            si_rows = []
-
-        for r in si_rows:
-            key = r.mri or (r.mr, r.item_code)
-            sinv_lookup[key] = {
-                "sinv": r.sinv,
-                "month": formatdate(r.posting_date, "MMM yyyy") if r.posting_date else "",
-            }
-
-    # --- 7. Stitch everything together ------------------------------------------
     rows = []
-    for idx, item in enumerate(items, start=1):
-        mr = mr_by_name[item.parent]
+    for i, line in enumerate(mreq_lines, start=1):
+        row = _compose_row(
+            i, line,
+            pinv_map.get(line.mreq_item_name, {}),
+            po_map.get(line.mreq_item_name, []),
+            prec_map.get(line.mreq_item_name, []),
+            dn_map.get(line.mreq_item_name, []),
+            ste_map.get(line.mreq_item_name, []),
+            exp_map.get(line.mreq_item_name, []),
+            contract_map.get(line.item_code),
+        )
 
-        scope = (item.get("custom_scope")
-                 or item_groups.get(item.item_code)
-                 or "")
-
-        # Optional client-side scope filter
-        if filters.get("scope") and scope and scope.lower() != filters.scope.lower():
+        if filters.get("hide_quoted") and row["status"] == "Quoted":
             continue
-
-        key = item.name
-        fallback_key = (item.parent, item.item_code)
-
-        delivered_entry = delivered.get(key) or delivered.get(fallback_key) or {}
-        qty_delivered = flt(delivered_entry.get("qty"))
-        dnotes = delivered_entry.get("dnotes", [])
-
-        purchase_rows = purchase.get(key) or purchase.get(fallback_key) or []
-        expense_rows = expense.get(key) or []
-
-        # Procurement path resolution. Either (or both) may be present;
-        # cost prefers PINV when both exist (formal supplier invoice wins).
-        if purchase_rows:
-            unit_cost = flt(purchase_rows[0].rate)
-            pinv_amount = sum(flt(p.amount) for p in purchase_rows)
-            pinv = purchase_rows[0].pinv if len(purchase_rows) == 1 \
-                   else _join_unique([p.pinv for p in purchase_rows])
-            supplier = purchase_rows[0].supplier if len(purchase_rows) == 1 \
-                       else _join_unique([p.supplier for p in purchase_rows])
-        else:
-            unit_cost = 0.0
-            pinv_amount = 0.0
-            pinv = ""
-            supplier = ""
-
-        if expense_rows:
-            exp = expense_rows[0].exp if len(expense_rows) == 1 \
-                  else _join_unique([e.exp for e in expense_rows])
-            exp_amount = sum(flt(e.amount) for e in expense_rows)
-            # If only EXP path was used, derive unit_cost / supplier from it
-            if not purchase_rows:
-                ordered = flt(item.qty) or 1.0
-                unit_cost = exp_amount / ordered
-                supplier = expense_rows[0].supplier_text or ""
-        else:
-            exp = ""
-            exp_amount = 0.0
-
-        amount = pinv_amount + exp_amount
-
-        sinv_entry = sinv_lookup.get(key) or sinv_lookup.get(fallback_key) or {}
-
-        # Optional unbilled-only filter
-        if filters.get("show_unbilled_only") and sinv_entry.get("sinv"):
-            continue
-
-        rows.append({
-            "row_type":          "detail",
-            "no":                str(idx),
-            "description":       item.item_name or item.description or "",
-            "part_no":           item.get("custom_part_no") or item.item_code or "",
-            "scope":             scope,
-            "delivery_location": item.warehouse or mr.set_warehouse or "",
-            "hq_or_zone":        mr.get("custom_hq_or_zone") or "",
-            "date":              mr.transaction_date,
-            "req":               item.parent,
-            "qty_ordered":       flt(item.qty),
-            "qty_delivered":     qty_delivered,
-            "balance":           flt(item.qty) - qty_delivered,
-            "uom":               item.uom,
-            "dnote":             dnotes[0] if len(dnotes) == 1 else _join_unique(dnotes),
-            "pinv":              pinv,
-            "exp":               exp,
-            "unit_cost":         unit_cost,
-            "amount":            amount,
-            "supplier":          supplier,
-            "sinv":              sinv_entry.get("sinv", ""),
-            "invoice_month":     sinv_entry.get("month", ""),
-            # internal sort keys, dropped before render
-            "_scope_key":        scope or "Uncategorised",
-            "_mreq":             item.parent,
-        })
+        rows.append(row)
 
     return rows
 
 
-def _join_unique(values):
-    seen = []
-    for v in values:
-        if v and v not in seen:
-            seen.append(v)
-    return ", ".join(seen)
+# ---------------------------------------------------------------------------
+# Source fetchers — each returns a dict keyed by Material Request Item.name
+# ---------------------------------------------------------------------------
+def _fetch_mreq_lines(filters):
+    """All MREQ Item rows for the project in the date window."""
+    extra_conditions = ""
+    if filters.get("scope"):
+        extra_conditions += " AND mri.custom_scope = %(scope)s"
+    if filters.get("hq_or_zone"):
+        extra_conditions += " AND mr.custom_hq_or_zone = %(hq_or_zone)s"
+
+    return frappe.db.sql(f"""
+        SELECT
+            mr.name                               AS mreq,
+            mr.transaction_date                   AS transaction_date,
+            mr.custom_approved_requisition_no     AS approved_requisition_no,
+            mri.name                              AS mreq_item_name,
+            mri.item_code                         AS item_code,
+            mri.item_name                         AS item_name,
+            mri.description                       AS description,
+            mri.qty                               AS qty_ordered,
+            mri.uom                               AS uom,
+            mri.rate                              AS mreq_rate,
+            mri.custom_scope                      AS scope,
+            mr.custom_hq_or_zone                  AS hq_zone,
+            COALESCE(mri.project, mr.project)     AS project,
+            mri.custom_quoted_in_qtn              AS qtn,
+            mri.custom_final_price                AS prior_final_price
+        FROM `tabMaterial Request` mr
+        INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
+        WHERE mr.docstatus = 1
+          AND COALESCE(mri.project, mr.project) = %(project)s
+          AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
+          {extra_conditions}
+        ORDER BY mr.transaction_date, mr.name, mri.idx
+    """, filters, as_dict=True)
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#   GROUPING + SUBTOTALS
-# ════════════════════════════════════════════════════════════════════════════
-
-def _build_grouped_rows(raw_rows, filters):
+def _fetch_pinv_for_lines(line_names):
+    """Paid PINV item lines linked to the MREQ Item rows.
+    Returns: {mreq_item_name: {pinv: 'PINV-X', rate, qty, supplier}}
     """
-    Inserts section headers, scope subtotals, materials subtotal, VAT and
-    Grand Total. Mirrors the row_type vocabulary used in the .js formatter.
+    if not line_names:
+        return {}
+
+    rows = frappe.db.sql("""
+        SELECT
+            pii.material_request_item   AS mreq_item_name,
+            pi.name                     AS pinv,
+            pi.supplier                 AS supplier,
+            pi.posting_date             AS posting_date,
+            pii.rate                    AS rate,
+            pii.qty                     AS qty,
+            pi.status                   AS status
+        FROM `tabPurchase Invoice Item` pii
+        INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
+        WHERE pii.material_request_item IN %(line_names)s
+          AND pi.docstatus = 1
+          AND pi.status = 'Paid'
+        ORDER BY pi.posting_date DESC
+    """, {"line_names": line_names}, as_dict=True)
+
+    out = {}
+    for r in rows:
+        existing = out.get(r.mreq_item_name)
+        if not existing:
+            out[r.mreq_item_name] = {
+                "pinvs": [r.pinv],
+                "rate": flt(r.rate),
+                "qty_paid": flt(r.qty),
+                "supplier": r.supplier,
+            }
+        else:
+            if r.pinv not in existing["pinvs"]:
+                existing["pinvs"].append(r.pinv)
+            existing["qty_paid"] += flt(r.qty)
+    return out
+
+
+def _fetch_po_for_lines(line_names):
+    if not line_names:
+        return {}
+    rows = frappe.db.sql("""
+        SELECT
+            poi.material_request_item   AS mreq_item_name,
+            po.name                     AS po
+        FROM `tabPurchase Order Item` poi
+        INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+        WHERE poi.material_request_item IN %(line_names)s
+          AND po.docstatus = 1
+    """, {"line_names": line_names}, as_dict=True)
+
+    out = {}
+    for r in rows:
+        out.setdefault(r.mreq_item_name, [])
+        if r.po not in out[r.mreq_item_name]:
+            out[r.mreq_item_name].append(r.po)
+    return out
+
+
+def _fetch_prec_for_lines(line_names):
+    if not line_names:
+        return {}
+    rows = frappe.db.sql("""
+        SELECT
+            pri.material_request_item   AS mreq_item_name,
+            pr.name                     AS prec
+        FROM `tabPurchase Receipt Item` pri
+        INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
+        WHERE pri.material_request_item IN %(line_names)s
+          AND pr.docstatus = 1
+    """, {"line_names": line_names}, as_dict=True)
+
+    out = {}
+    for r in rows:
+        out.setdefault(r.mreq_item_name, [])
+        if r.prec not in out[r.mreq_item_name]:
+            out[r.mreq_item_name].append(r.prec)
+    return out
+
+
+def _fetch_dn_for_lines(line_names):
+    """Delivery Notes linked back via Sales Order chain.
+
+    Path: MREQ Item -> SO Item (via material_request_item) -> DN Item (via against_sales_order_item)
     """
-    if not raw_rows:
-        return [{
-            "row_type": "section_header",
-            "description": _("No Material Requests found in this period."),
-        }]
+    if not line_names:
+        return {}
 
-    # Group by scope, preserving SCOPE_ORDER, with leftovers at the end
-    by_scope = {}
-    for r in raw_rows:
-        by_scope.setdefault(r["_scope_key"], []).append(r)
+    rows = frappe.db.sql("""
+        SELECT
+            soi.material_request_item   AS mreq_item_name,
+            dn.name                     AS dn,
+            dni.qty                     AS qty
+        FROM `tabSales Order Item` soi
+        INNER JOIN `tabDelivery Note Item` dni
+            ON dni.so_detail = soi.name
+        INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
+        WHERE soi.material_request_item IN %(line_names)s
+          AND dn.docstatus = 1
+    """, {"line_names": line_names}, as_dict=True)
 
-    ordered_scopes = [s for s in SCOPE_ORDER if s in by_scope] + \
-                     [s for s in by_scope if s not in SCOPE_ORDER]
+    out = {}
+    for r in rows:
+        existing = out.setdefault(r.mreq_item_name, {"dns": [], "qty_delivered": 0})
+        if r.dn not in existing["dns"]:
+            existing["dns"].append(r.dn)
+        existing["qty_delivered"] += flt(r.qty)
 
-    output = []
-    output.append({
-        "row_type": "section_header",
-        "description": _("── MATERIALS BY SCOPE ──"),
-    })
-
-    grand_subtotal = 0.0
-
-    for scope in ordered_scopes:
-        scope_rows = by_scope[scope]
-        scope_total = sum(flt(r["amount"]) for r in scope_rows)
-        grand_subtotal += scope_total
-
-        output.append({
-            "row_type": "scope_header",
-            "description": scope,
-        })
-
-        for r in scope_rows:
-            # Strip internal keys before adding to output
-            r.pop("_scope_key", None)
-            r.pop("_mreq", None)
-            output.append(r)
-
-        output.append({
-            "row_type": "subtotal_scope",
-            "description": _("Sub Total — {0}").format(scope),
-            "amount": scope_total,
-        })
-
-    # Materials grand subtotal
-    output.append({
-        "row_type": "subtotal_materials",
-        "description": _("SUBTOTAL — ALL MATERIALS"),
-        "amount": grand_subtotal,
-    })
-
-    vat_amount = grand_subtotal * VAT_RATE
-    output.append({
-        "row_type": "vat_18%",
-        "description": _("VAT @ 18%"),
-        "amount": vat_amount,
-    })
-
-    output.append({
-        "row_type": "grand_total",
-        "description": _("GRAND TOTAL"),
-        "amount": grand_subtotal + vat_amount,
-    })
-
-    return output
+    # Convert to list-style for downstream uniformity
+    return {k: v for k, v in out.items()}
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#   ACTION: CREATE SALES INVOICE
-# ════════════════════════════════════════════════════════════════════════════
+def _fetch_ste_matches(mreq_lines, filters):
+    """STE has no MREQ link — match by item_code + project + date window."""
+    item_codes = list({line.item_code for line in mreq_lines if line.item_code})
+    if not item_codes:
+        return {}
 
+    # STE Detail has 'project' via accounting dimensions or parent
+    rows = frappe.db.sql("""
+        SELECT
+            sed.item_code           AS item_code,
+            se.name                 AS ste,
+            sed.qty                 AS qty,
+            sed.valuation_rate      AS valuation_rate,
+            se.posting_date         AS posting_date
+        FROM `tabStock Entry Detail` sed
+        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+        WHERE sed.item_code IN %(item_codes)s
+          AND se.docstatus = 1
+          AND se.stock_entry_type IN ('Material Issue', 'Material Transfer')
+          AND se.posting_date BETWEEN %(window_start)s AND %(window_end)s
+          AND (sed.project = %(project)s OR se.project = %(project)s)
+    """, {
+        "item_codes": item_codes,
+        "project": filters.project,
+        "window_start": add_days(filters.from_date, -90),
+        "window_end": filters.to_date,
+    }, as_dict=True)
+
+    out = {}
+    for r in rows:
+        for line in mreq_lines:
+            if line.item_code != r.item_code:
+                continue
+            existing = out.setdefault(line.mreq_item_name, {
+                "stes": [],
+                "qty_issued": 0,
+                "valuation_rate": None,
+            })
+            if r.ste not in existing["stes"]:
+                existing["stes"].append(r.ste)
+            existing["qty_issued"] += flt(r.qty)
+            if existing["valuation_rate"] is None:
+                existing["valuation_rate"] = flt(r.valuation_rate)
+    return out
+
+
+def _fetch_exp_matches(mreq_lines, filters):
+    """EXP Claim has no MREQ link — match by project + description LIKE %item_name%."""
+    item_names_by_line = {
+        line.mreq_item_name: (line.item_name or "").strip()
+        for line in mreq_lines
+        if line.item_name
+    }
+    if not item_names_by_line:
+        return {}
+
+    rows = frappe.db.sql("""
+        SELECT
+            ec.name             AS exp,
+            ecd.description     AS description,
+            ecd.sanctioned_amount AS amount,
+            ec.posting_date     AS posting_date
+        FROM `tabExpense Claim` ec
+        INNER JOIN `tabExpense Claim Detail` ecd ON ecd.parent = ec.name
+        WHERE ec.docstatus = 1
+          AND ec.approval_status = 'Approved'
+          AND (ecd.project = %(project)s OR ec.project = %(project)s)
+          AND ec.posting_date BETWEEN %(from_date)s AND %(to_date)s
+    """, {
+        "project": filters.project,
+        "from_date": add_days(filters.from_date, -90),
+        "to_date": filters.to_date,
+    }, as_dict=True)
+
+    out = {}
+    for line_name, item_name in item_names_by_line.items():
+        for r in rows:
+            if not r.description:
+                continue
+            if item_name.lower() in r.description.lower() or r.description.lower() in item_name.lower():
+                existing = out.setdefault(line_name, {"exps": [], "amount": 0})
+                if r.exp not in existing["exps"]:
+                    existing["exps"].append(r.exp)
+                existing["amount"] += flt(r.amount)
+    return out
+
+
+def _fetch_contract_prices(mreq_lines, filters):
+    """Look up each item code in the Contract Price List for this project."""
+    item_codes = list({line.item_code for line in mreq_lines if line.item_code})
+    if not item_codes:
+        return {}
+
+    if not frappe.db.exists("DocType", CONTRACT_PRICE_DOCTYPE):
+        # Doctype not found — return empty so report still works
+        frappe.log_error(
+            f"Contract Price List doctype '{CONTRACT_PRICE_DOCTYPE}' not found — pricing will treat all items as off-contract.",
+            "NMB Billing Report"
+        )
+        return {}
+
+    table = f"tab{CONTRACT_PRICE_DOCTYPE}"
+    rows = frappe.db.sql(f"""
+        SELECT
+            `{CONTRACT_FIELD_ITEM_CODE}`   AS item_code,
+            `{CONTRACT_FIELD_PRICE}`       AS contract_price,
+            `{CONTRACT_FIELD_FROM}`        AS effective_from,
+            `{CONTRACT_FIELD_TO}`          AS effective_to
+        FROM `{table}`
+        WHERE `{CONTRACT_FIELD_ITEM_CODE}` IN %(codes)s
+          AND `{CONTRACT_FIELD_PROJECT}` = %(project)s
+        ORDER BY `{CONTRACT_FIELD_FROM}` DESC
+    """, {"codes": item_codes, "project": filters.project}, as_dict=True)
+
+    out = {}
+    for r in rows:
+        if r.item_code in out:
+            continue  # already have most recent
+        # Filter by effective dates if set
+        if r.effective_from and getdate(r.effective_from) > getdate(filters.to_date):
+            continue
+        if r.effective_to and getdate(r.effective_to) < getdate(filters.from_date):
+            continue
+        out[r.item_code] = flt(r.contract_price)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Row composition + pricing logic
+# ---------------------------------------------------------------------------
+def _compose_row(sr, line, pinv, po_list, prec_list, dn_list, ste_data, exp_data, contract_price):
+    qty_ordered = flt(line.qty_ordered)
+
+    # Cost determination: PINV → STE → EXP → 0
+    cost = 0.0
+    supplier = ""
+    qty_paid_or_issued = 0.0
+
+    if pinv:
+        cost = flt(pinv.get("rate"))
+        supplier = pinv.get("supplier") or ""
+        qty_paid_or_issued = flt(pinv.get("qty_paid"))
+    elif ste_data and flt(ste_data.get("valuation_rate")):
+        cost = flt(ste_data["valuation_rate"])
+        supplier = "Stock Issue (STE)"
+        qty_paid_or_issued = flt(ste_data.get("qty_issued"))
+    elif exp_data and flt(exp_data.get("amount")) and qty_ordered:
+        # Estimate unit cost from EXP amount / qty ordered (rough)
+        cost = flt(exp_data["amount"]) / qty_ordered
+        supplier = "Cash / Expense Claim"
+        qty_paid_or_issued = qty_ordered  # assume EXP covered ordered qty
+
+    # Reference / Final price + comment
+    threshold_price = cost * THRESHOLD_MARKUP
+    target_price = cost / TARGET_MARGIN if cost else 0.0
+
+    if cost <= 0:
+        unit_sell_price = 0.0
+        final_price = 0.0
+        comment = "No cost source"
+    elif contract_price is not None and contract_price > 0:
+        unit_sell_price = contract_price
+        if contract_price >= threshold_price:
+            final_price = contract_price
+            comment = "Contract – OK"
+        else:
+            final_price = target_price
+            margin_pct = ((contract_price - cost) / contract_price * 100) if contract_price else 0
+            comment = f"Below threshold (contract margin {margin_pct:.1f}%) – marked up to true 20%"
+    else:
+        unit_sell_price = target_price
+        final_price = target_price
+        comment = "Not in contract – market price + true 20% margin"
+
+    # Honour prior accountant override
+    if line.prior_final_price and flt(line.prior_final_price) > 0:
+        if not line.qtn:
+            final_price = flt(line.prior_final_price)
+            comment += " | overridden by accountant"
+
+    qty_delivered = flt(dn_list.get("qty_delivered", 0)) if isinstance(dn_list, dict) else 0
+    balance = max(qty_ordered - qty_delivered, 0)
+
+    # Status logic
+    status = _compute_status(
+        line=line,
+        cost=cost,
+        qty_paid_or_issued=qty_paid_or_issued,
+        qty_delivered=qty_delivered,
+    )
+
+    total_purchase = cost * qty_ordered if cost else 0
+
+    return {
+        "sr_no": sr,
+        "transaction_date": line.transaction_date,
+        "approved_requisition_no": line.approved_requisition_no or "",
+        "mreq": line.mreq,
+        "mreq_item_name": line.mreq_item_name,
+        "item_name": line.item_name or "",
+        "item_code": line.item_code or "",
+        "qty_ordered": qty_ordered,
+        "uom": line.uom or "",
+        "scope": line.scope or "",
+        "hq_zone": line.hq_zone or "",
+        "po": ", ".join(po_list) if po_list else "",
+        "pinv": ", ".join(pinv.get("pinvs", [])) if pinv else "",
+        "exp": ", ".join(exp_data.get("exps", [])) if exp_data else "",
+        "ste": ", ".join(ste_data.get("stes", [])) if ste_data else "",
+        "prec": ", ".join(prec_list) if prec_list else "",
+        "dnote": ", ".join(dn_list.get("dns", [])) if isinstance(dn_list, dict) else "",
+        "qty_delivered": qty_delivered,
+        "balance": balance,
+        "unit_cost": cost,
+        "total_purchase": total_purchase,
+        "supplier": supplier,
+        "unit_sell_price": unit_sell_price,
+        "pricing_comment": comment,
+        "final_price": final_price,
+        "status": status,
+        "qtn": line.qtn or "",
+        "project": line.project,
+        "currency": "TZS",
+    }
+
+
+def _compute_status(line, cost, qty_paid_or_issued, qty_delivered):
+    """Reconciliation-report status flag."""
+    if line.qtn:
+        return "Quoted"
+    if cost <= 0:
+        return "No cost source"
+    if qty_delivered <= 0:
+        return "DN missing"
+    if qty_paid_or_issued <= 0:
+        return "Not yet paid"
+    return "Ready to quote"
+
+
+# ---------------------------------------------------------------------------
+# Persistence — write computed values back to MREQ Item
+# ---------------------------------------------------------------------------
+def _persist_pricing_to_mreq(rows):
+    """Save Unit Sell Price, Comment, Final Price (if not overridden) per line."""
+    for row in rows:
+        mreq_item_name = row.get("mreq_item_name")
+        if not mreq_item_name:
+            continue
+        try:
+            updates = {
+                "custom_unit_sell_price": flt(row.get("unit_sell_price")),
+                "custom_pricing_comment": row.get("pricing_comment") or "",
+            }
+            existing_final = frappe.db.get_value(
+                "Material Request Item", mreq_item_name, "custom_final_price"
+            )
+            if not existing_final or flt(existing_final) == 0:
+                updates["custom_final_price"] = flt(row.get("final_price"))
+
+            frappe.db.set_value(
+                "Material Request Item", mreq_item_name,
+                updates, update_modified=False
+            )
+        except Exception as e:
+            frappe.log_error(
+                f"Failed to persist pricing for {mreq_item_name}: {e}",
+                "NMB Billing Report"
+            )
+
+    frappe.db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Inline edit handler — called from JS when accountant edits Final Price
+# ---------------------------------------------------------------------------
 @frappe.whitelist()
-def create_sales_invoice(filters):
-    """
-    Build a draft Sales Invoice for NMB Bank from the report's current period.
-    One line per Material Request Item that has a Purchase Invoice but no
-    existing Sales Invoice yet.
-    """
-    import json as _json
-    if isinstance(filters, str):
-        filters = _json.loads(filters)
-    filters = frappe._dict(filters)
-    _validate_filters(filters)
+def update_final_price(mreq_item_name, final_price):
+    """Save accountant override on Final Price."""
+    if not mreq_item_name:
+        frappe.throw(_("MREQ Item reference is missing."))
 
-    raw_rows = _fetch_material_request_lines(filters)
-    billable = [r for r in raw_rows if not r.get("sinv") and flt(r.get("amount")) > 0]
+    fp = flt(final_price)
+    if fp < 0:
+        frappe.throw(_("Final Price cannot be negative."))
 
-    if not billable:
-        frappe.throw(_("No unbilled material lines found for this period."))
+    # Don't allow editing if already on a submitted Quotation
+    qtn = frappe.db.get_value(
+        "Material Request Item", mreq_item_name, "custom_quoted_in_qtn"
+    )
+    if qtn:
+        qtn_status = frappe.db.get_value("Quotation", qtn, "docstatus")
+        if qtn_status == 1:
+            frappe.throw(
+                _("This line is already on submitted Quotation {0}.").format(qtn)
+            )
 
-    # Billing rule: SINV rate = actual procurement cost × (1 + markup%).
-    # Markup comes from the report filter; default 0 = bill at cost.
-    markup = flt(filters.get("markup_percent")) / 100.0
-
-    # TODO: confirm NMB Bank's Customer record name in your ERPNext
-    customer = frappe.db.get_value(
-        "Customer",
-        {"customer_name": ["like", "%NMB%"]},
-        "name",
-    ) or "NMB Bank PLC"
-
-    si = frappe.new_doc("Sales Invoice")
-    si.customer = customer
-    si.project = filters.project
-    si.posting_date = filters.to_date
-    si.due_date = filters.to_date
-
-    for r in billable:
-        cost_rate = flt(r["unit_cost"])
-        billed_rate = cost_rate * (1.0 + markup)
-        si.append("items", {
-            "item_code":            None,  # falls back to item_name if no item_code
-            "item_name":            r["description"],
-            "description":          (
-                "{desc}  |  cost {cost:,.0f} +{mk:.0f}% → {billed:,.0f}"
-                .format(
-                    desc=r["description"],
-                    cost=cost_rate,
-                    mk=markup * 100,
-                    billed=billed_rate,
-                )
-            ),
-            "qty":                  flt(r["qty_delivered"]) or flt(r["qty_ordered"]),
-            "uom":                  r["uom"],
-            "rate":                 billed_rate,
-            "material_request":     r["req"],
-        })
-
-    si.set_missing_values()
-    si.insert(ignore_permissions=False)
-    return si.name
+    frappe.db.set_value(
+        "Material Request Item", mreq_item_name,
+        "custom_final_price", fp, update_modified=False
+    )
+    frappe.db.commit()
+    return {"ok": True, "saved_value": fp}

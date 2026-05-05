@@ -1,219 +1,247 @@
-// NMB HQ Monthly Billing – client-side report definition
-// Path: iaes_custom/iaes_custom/report/nmb_hq_monthly_billing/nmb_hq_monthly_billing.js
+// NMB HQ Monthly Billing — Client-side report UI
+// =================================================
 //
-// Tracks the HQ procurement-to-invoicing flow:
-//   Material Request (MREQ) → Delivery Note (Dnote) → Purchase Invoice (PINV)
-//   → Sales Invoice (SINV) to NMB Bank.
+// Filters, row coloring by status, inline edit on Final Price,
+// "Generate Quotation" button.
 
 frappe.query_reports["NMB HQ Monthly Billing"] = {
-
-    // ── Filters ──────────────────────────────────────────────────────────────
     filters: [
         {
             fieldname: "project",
-            label:     __("Project"),
+            label: __("Project"),
             fieldtype: "Link",
-            options:   "Project",
-            default:   "",  // TODO: set to the HQ project's full name (e.g. linked to PROJ-210)
-            reqd:      1,
+            options: "Project",
+            reqd: 1,
+            default: "PROJ-0210",
         },
         {
             fieldname: "from_date",
-            label:     __("From Date"),
+            label: __("From Date"),
             fieldtype: "Date",
-            default:   frappe.datetime.month_start(),
-            reqd:      1,
+            reqd: 1,
+            default: frappe.datetime.month_start(),
         },
         {
             fieldname: "to_date",
-            label:     __("To Date"),
+            label: __("To Date"),
             fieldtype: "Date",
-            default:   frappe.datetime.month_end(),
-            reqd:      1,
+            reqd: 1,
+            default: frappe.datetime.month_end(),
         },
         {
             fieldname: "scope",
-            label:     __("Scope"),
+            label: __("Scope"),
             fieldtype: "Select",
-            options:   ["", "AC", "Electrical", "Plumbing", "Generator", "Store"],
+            options: ["", "AC", "Electrical", "Plumbing", "Generator", "Kitchen", "Motor Rewinding", "AMC", "Store"],
         },
         {
             fieldname: "hq_or_zone",
-            label:     __("HQ / Dar Zone"),
+            label: __("HQ / Dar Zone"),
             fieldtype: "Select",
-            options:   ["", "HQ", "Dar Zone"],
+            options: ["", "HQ", "Dar Zone"],
         },
         {
-            fieldname: "show_unbilled_only",
-            label:     __("Show Unbilled Only"),
+            fieldname: "approved_requisition_no",
+            label: __("Approved Requisition No."),
+            fieldtype: "Data",
+        },
+        {
+            fieldname: "hide_quoted",
+            label: __("Hide already-quoted lines"),
             fieldtype: "Check",
-            default:   0,
-        },
-        {
-            fieldname: "markup_percent",
-            label:     __("Markup % (for SINV preview)"),
-            fieldtype: "Float",
-            default:   0,
+            default: 0,
         },
     ],
 
-    // ── Row formatter ────────────────────────────────────────────────────────
-    // Same row_type vocabulary as the Zone report so styling stays consistent.
     formatter: function (value, row, column, data, default_formatter) {
         value = default_formatter(value, row, column, data);
+        if (!data) return value;
 
-        if (!data || !data.row_type) return value;
+        // Row coloring by status
+        const status_colors = {
+            "Ready to quote":  "#d4edda",  // green
+            "DN missing":      "#fff3cd",  // amber
+            "Not yet paid":    "#fff3cd",  // amber
+            "No cost source":  "#f8d7da",  // red
+            "Quoted":          "#e2e3e5",  // gray
+        };
 
-        const type = data.row_type;
-
-        // Top section banner — e.g. "── MATERIALS BY SCOPE ──"
-        if (type === "section_header") {
-            return `<span style="font-weight:700;color:#1a3a5c;letter-spacing:.5px;">${value}</span>`;
+        const color = status_colors[data.status];
+        if (color) {
+            value = `<span style="display:block; padding:2px 4px; background:${color};">${value}</span>`;
         }
 
-        // Per-scope sub-heading — e.g. "AC", "Plumbing"
-        if (type === "scope_header") {
-            return `<span style="font-weight:600;color:#2c5f8a;text-decoration:underline;">${value}</span>`;
-        }
-
-        // Per-scope subtotals
-        if (type === "subtotal_scope") {
-            if (column.fieldname === "amount" || column.fieldname === "description") {
-                return `<span style="font-style:italic;color:#555;font-weight:600;">${value}</span>`;
-            }
-        }
-
-        // Materials grand subtotal
-        if (type === "subtotal_materials") {
-            if (column.fieldname === "amount" || column.fieldname === "description") {
-                return `<strong style="color:#155724;">${value}</strong>`;
-            }
-        }
-
-        // VAT row
-        if (type === "vat_18%") {
-            if (column.fieldname === "amount" || column.fieldname === "description") {
-                return `<em>${value}</em>`;
-            }
-        }
-
-        // Final grand total
-        if (type === "grand_total") {
-            if (column.fieldname === "amount" || column.fieldname === "description") {
-                return `<strong style="font-size:1.05em;color:#004085;background:#cce5ff;padding:2px 6px;border-radius:3px;">${value}</strong>`;
-            }
-        }
-
-        // ── Detail-row decorations ────────────────────────────────────────────
-        if (type === "detail") {
-
-            // Balance: red if positive (undelivered), grey if zero
-            if (column.fieldname === "balance") {
-                const num = parseFloat(data.balance);
-                if (!isNaN(num) && num > 0) {
-                    return `<span style="color:#c0392b;font-weight:600;" title="Undelivered">&#9888; ${value}</span>`;
-                }
-                if (!isNaN(num) && num === 0) {
-                    return `<span style="color:#999;">${value}</span>`;
-                }
-            }
-
-            // SINV: red flag if missing (= unbilled)
-            if (column.fieldname === "sinv") {
-                if (!value || value === "" || value === "None") {
-                    return `<span style="color:#c0392b;font-weight:600;" title="Not yet billed to NMB">&#9888; Unbilled</span>`;
-                }
-            }
-
-            // Dnote: warn if missing
-            if (column.fieldname === "dnote") {
-                if (!value || value === "" || value === "None") {
-                    return `<span style="color:#e67e22;font-style:italic;" title="No delivery note">&#9888; None</span>`;
-                }
-            }
-
-            // PINV: warn if missing (not yet purchased via PO/PINV path)
-            if (column.fieldname === "pinv") {
-                if (!value || value === "" || value === "None") {
-                    return `<span style="color:#999;font-style:italic;">—</span>`;
-                }
-                return `<span style="color:#1a3a6b;font-weight:600;" title="Purchase Invoice path">&#129534; ${value}</span>`;
-            }
-
-            // EXP: warn if missing (not via expense-claim path)
-            if (column.fieldname === "exp") {
-                if (!value || value === "" || value === "None") {
-                    return `<span style="color:#999;font-style:italic;">—</span>`;
-                }
-                return `<span style="color:#1a6b3a;font-weight:600;" title="Expense Claim path">&#128203; ${value}</span>`;
-            }
-
-            // Scope: small colored chip
-            if (column.fieldname === "scope" && value) {
-                const palette = {
-                    "AC":         "#3498db",
-                    "Electrical": "#f39c12",
-                    "Plumbing":   "#16a085",
-                    "Generator":  "#8e44ad",
-                    "Store":      "#7f8c8d",
-                };
-                const color = palette[value] || "#555";
-                return `<span style="background:${color};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;">${value}</span>`;
-            }
-
-            // HQ/Zone: small chip
-            if (column.fieldname === "hq_or_zone" && value) {
-                const bg = value === "HQ" ? "#1a3a5c" : "#2c5f8a";
-                return `<span style="background:${bg};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;">${value}</span>`;
-            }
+        // Highlight the Final Price column to signal it's editable
+        if (column.fieldname === "final_price" && data.status !== "Quoted") {
+            value = `<span style="font-weight:600; cursor:pointer; border-bottom:1px dashed #888;" title="Click to edit">${value}</span>`;
         }
 
         return value;
     },
 
-    // ── Toolbar buttons ──────────────────────────────────────────────────────
     onload: function (report) {
+        // "Generate Quotation" button
+        report.page.add_inner_button(__("Generate Quotation"), function () {
+            generate_quotation(report);
+        }).addClass("btn-primary");
 
-        // Export to Excel (built-in Frappe)
-        report.page.add_inner_button(__("Export to Excel"), function () {
-            frappe.query_report.export_report("Excel");
-        }, __("Actions"));
+        // "Refresh Pricing" — recomputes prices without touching overrides
+        report.page.add_inner_button(__("Refresh Pricing"), function () {
+            report.refresh();
+        });
 
-        // Create a draft Sales Invoice from the current report
-        report.page.add_inner_button(__("Create Sales Invoice"), function () {
-            const filters = frappe.query_report.get_filter_values();
-            if (!filters.project || !filters.from_date || !filters.to_date) {
-                frappe.msgprint(__("Please set Project, From Date and To Date first."));
-                return;
-            }
-            frappe.confirm(
-                __("Create a draft Sales Invoice for NMB Bank HQ from this billing period?"),
-                function () {
-                    frappe.call({
-                        method: "iaes_custom.iaes_custom.report.nmb_hq_monthly_billing"
-                               + ".nmb_hq_monthly_billing.create_sales_invoice",
-                        args:  { filters },
-                        freeze: true,
-                        freeze_message: __("Building Sales Invoice…"),
-                        callback: function (r) {
-                            if (r.message) {
-                                frappe.show_alert({
-                                    message: __("Invoice {0} created.", [
-                                        `<a href='/app/sales-invoice/${r.message}'>${r.message}</a>`
-                                    ]),
-                                    indicator: "green",
-                                }, 8);
-                            }
-                        },
-                    });
-                }
-            );
-        }, __("Actions"));
+        // Hook inline editing on Final Price
+        setTimeout(() => attach_inline_edit(report), 800);
+    },
 
-        // Shortcut: open the project record
-        report.page.add_inner_button(__("Open Project"), function () {
-            const proj = frappe.query_report.get_filter_value("project");
-            if (proj) frappe.set_route("Form", "Project", proj);
-        }, __("Actions"));
+    after_datatable_render: function (datatable) {
+        // Re-attach inline edit after each render
+        const report = frappe.query_report;
+        if (report) attach_inline_edit(report);
     },
 };
+
+
+// ---------------------------------------------------------------------------
+// Inline edit on Final Price column
+// ---------------------------------------------------------------------------
+function attach_inline_edit(report) {
+    const grid = $(report.page.main).find(".dt-scrollable, .datatable");
+    if (!grid.length) return;
+
+    grid.off("click.fp_edit");
+    grid.on("click.fp_edit", "td", function (e) {
+        const $td = $(this);
+        const col_idx = $td.index();
+        const datatable = report.datatable;
+        if (!datatable) return;
+
+        // Find which column was clicked
+        const col = datatable.datamanager.columns[col_idx];
+        if (!col || col.fieldname !== "final_price") return;
+
+        const row_idx = $td.closest("tr").attr("data-row-index");
+        if (row_idx == null) return;
+
+        const row = datatable.datamanager.data[parseInt(row_idx)];
+        if (!row || !row.mreq_item_name) return;
+        if (row.status === "Quoted") {
+            frappe.show_alert({
+                message: __("Cannot edit price on already-quoted line."),
+                indicator: "orange",
+            });
+            return;
+        }
+
+        e.stopPropagation();
+        prompt_final_price_edit(row, report);
+    });
+}
+
+
+function prompt_final_price_edit(row, report) {
+    frappe.prompt(
+        [
+            {
+                fieldname: "final_price",
+                label: __("Final Price (TZS)"),
+                fieldtype: "Currency",
+                default: row.final_price,
+                reqd: 1,
+            },
+        ],
+        function (values) {
+            frappe.call({
+                method: "iaes_custom.iaes_custom.iaes_custom.report.nmb_hq_monthly_billing.nmb_hq_monthly_billing.update_final_price",
+                args: {
+                    mreq_item_name: row.mreq_item_name,
+                    final_price: values.final_price,
+                },
+                callback: function (r) {
+                    if (r.message && r.message.ok) {
+                        frappe.show_alert({
+                            message: __("Final Price updated. Refreshing report…"),
+                            indicator: "green",
+                        });
+                        report.refresh();
+                    }
+                },
+            });
+        },
+        __("Edit Final Price"),
+        __("Save")
+    );
+}
+
+
+// ---------------------------------------------------------------------------
+// Generate Quotation button handler
+// ---------------------------------------------------------------------------
+function generate_quotation(report) {
+    const filters = report.get_values();
+    if (!filters.project) {
+        frappe.msgprint(__("Project filter is required."));
+        return;
+    }
+
+    const data = report.data || [];
+    const ready = data.filter(r => r.status === "Ready to quote");
+
+    if (ready.length === 0) {
+        frappe.msgprint({
+            title: __("Nothing to quote"),
+            message: __(
+                "No lines have status 'Ready to quote' in the current view. " +
+                "Lines need to have a cost source AND a Delivery Note AND not already be on a Quotation."
+            ),
+            indicator: "orange",
+        });
+        return;
+    }
+
+    // Show preview totals
+    const total = ready.reduce(
+        (sum, r) => sum + (r.final_price || 0) * (r.qty_ordered || 0),
+        0
+    );
+
+    frappe.confirm(
+        __(
+            "Create Quotation for {0} lines totalling TZS {1}?<br><br>" +
+            "Quotation will be created as Draft. Review and submit manually before sending to NMB.",
+            [
+                ready.length,
+                format_currency(total, "TZS"),
+            ]
+        ),
+        function () {
+            frappe.call({
+                method: "iaes_custom.iaes_custom.iaes_custom.report.nmb_hq_monthly_billing.generate_quotation.generate",
+                args: {
+                    project: filters.project,
+                    from_date: filters.from_date,
+                    to_date: filters.to_date,
+                    mreq_item_names: ready.map(r => r.mreq_item_name),
+                },
+                freeze: true,
+                freeze_message: __("Creating Quotation…"),
+                callback: function (r) {
+                    if (r.message && r.message.quotation) {
+                        frappe.show_alert({
+                            message: __(
+                                "Quotation {0} created with {1} lines. Opening…",
+                                [r.message.quotation, r.message.lines_count]
+                            ),
+                            indicator: "green",
+                        });
+                        setTimeout(() => {
+                            frappe.set_route("Form", "Quotation", r.message.quotation);
+                        }, 800);
+                    } else {
+                        frappe.msgprint(__("Quotation creation failed. See server logs."));
+                    }
+                },
+            });
+        }
+    );
+}

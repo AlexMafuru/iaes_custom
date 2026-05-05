@@ -7,7 +7,7 @@
  "doctype": "Report",
  "filters": [
   {
-   "default": "",
+   "default": "PROJ-0210",
    "fieldname": "project",
    "fieldtype": "Link",
    "label": "Project",
@@ -31,7 +31,7 @@
    "fieldtype": "Select",
    "label": "Scope",
    "mandatory": 0,
-   "options": "\nAC\nElectrical\nPlumbing\nGenerator\nStore"
+   "options": "\nAC\nElectrical\nPlumbing\nGenerator\nKitchen\nMotor Rewinding\nAMC\nStore"
   },
   {
    "fieldname": "hq_or_zone",
@@ -41,23 +41,22 @@
    "options": "\nHQ\nDar Zone"
   },
   {
-   "fieldname": "show_unbilled_only",
-   "fieldtype": "Check",
-   "label": "Show Unbilled Only",
+   "fieldname": "approved_requisition_no",
+   "fieldtype": "Data",
+   "label": "Approved Requisition No.",
    "mandatory": 0
   },
   {
-   "fieldname": "markup_percent",
-   "fieldtype": "Float",
-   "label": "Markup % (for SINV preview)",
-   "mandatory": 0,
-   "default": 0
+   "fieldname": "hide_quoted",
+   "fieldtype": "Check",
+   "label": "Hide already-quoted lines",
+   "mandatory": 0
   }
  ],
  "idx": 0,
  "is_standard": "Yes",
  "letter_head": "",
- "modified": "2026-05-02 00:00:00.000000",
+ "modified": "2026-05-05 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IAES Custom",
  "name": "NMB HQ Monthly Billing",
