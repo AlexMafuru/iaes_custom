@@ -113,7 +113,7 @@ def _fetch_lines_for_qtn(mreq_item_names, project, price_by_mreq_item):
             mri.description                     AS description,
             mri.qty                             AS qty,
             mri.uom                             AS uom,
-            mri.custom_quoted_in_qtn            AS already_quoted,
+            mri.custom_quoted_in_quotation            AS already_quoted,
             mr.custom_approved_requisition_no   AS approved_requisition_no
         FROM `tabMaterial Request Item` mri
         INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent
@@ -189,12 +189,12 @@ def _build_quotation(customer, project, from_date, to_date, lines):
 
 
 def _tag_mreq_items_with_qtn(lines, qtn_name):
-    """Set custom_quoted_in_qtn on each MREQ Item we just included."""
+    """Set custom_quoted_in_quotation on each MREQ Item we just included."""
     for line in lines:
         frappe.db.set_value(
             "Material Request Item",
             line.mreq_item_name,
-            "custom_quoted_in_qtn",
+            "custom_quoted_in_quotation",
             qtn_name,
             update_modified=False,
         )
@@ -213,18 +213,18 @@ def _period_label(from_date, to_date):
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 def untag_quotation(qtn_name):
-    """Clear custom_quoted_in_qtn on every MREQ Item that was tagged
+    """Clear custom_quoted_in_quotation on every MREQ Item that was tagged
     with this QTN. Used when a draft Quotation is cancelled or deleted."""
     rows = frappe.get_all(
         "Material Request Item",
-        filters={"custom_quoted_in_qtn": qtn_name},
+        filters={"custom_quoted_in_quotation": qtn_name},
         fields=["name"],
     )
     for r in rows:
         frappe.db.set_value(
             "Material Request Item",
             r.name,
-            "custom_quoted_in_qtn",
+            "custom_quoted_in_quotation",
             None,
             update_modified=False,
         )

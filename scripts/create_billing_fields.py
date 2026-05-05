@@ -38,7 +38,7 @@ FIELDS = [
     # --- Material Request Item (1 field) ---
     (
         "Material Request Item",
-        "custom_quoted_in_qtn",
+        "custom_quoted_in_quotation",
         {
             "label": "Quoted In Quotation",
             "fieldtype": "Link",

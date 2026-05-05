@@ -178,7 +178,7 @@ def _fetch_mreq_lines(filters):
             mri.custom_scope                      AS scope,
             mr.custom_hq_or_zone                  AS hq_zone,
             mri.project                           AS project,
-            mri.custom_quoted_in_qtn              AS qtn
+            mri.custom_quoted_in_quotation              AS qtn
         FROM `tabMaterial Request` mr
         INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
         WHERE mr.docstatus = 1
