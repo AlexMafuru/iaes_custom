@@ -177,13 +177,13 @@ def _fetch_mreq_lines(filters):
             mri.rate                              AS mreq_rate,
             mri.custom_scope                      AS scope,
             mr.custom_hq_or_zone                  AS hq_zone,
-            COALESCE(mri.project, mr.project)     AS project,
+            mri.project                           AS project,
             mri.custom_quoted_in_qtn              AS qtn,
             mri.custom_final_price                AS prior_final_price
         FROM `tabMaterial Request` mr
         INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
         WHERE mr.docstatus = 1
-          AND COALESCE(mri.project, mr.project) = %(project)s
+          AND mri.project = %(project)s
           AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
           {extra_conditions}
         ORDER BY mr.transaction_date, mr.name, mri.idx
