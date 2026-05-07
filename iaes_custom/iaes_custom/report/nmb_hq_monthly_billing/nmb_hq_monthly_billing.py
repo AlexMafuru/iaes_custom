@@ -815,10 +815,18 @@ def _compose_orphan_exp_row(sr, line, filters):
     Per-row spec: description verbatim → item_name, qty=1, uom=Pc,
     sanctioned_amount → unit_cost = final_price (pass-through).
     No contract lookup — accountant reviews and adjusts on the Quotation.
+    Expense type (Travel / Materials / etc) surfaced in the comment for
+    quick triage.
     """
     amount = flt(line.amount)
     item_name_raw = (line.description or line.expense_type or "Expense").strip()
     item_name = item_name_raw[:140]  # truncate to fit column width
+
+    expense_type = (line.expense_type or "").strip()
+    if expense_type:
+        comment = f"Expense reimbursement ({expense_type}) — review by accountant"
+    else:
+        comment = "Expense reimbursement — review by accountant"
 
     return {
         "sr_no": sr,
@@ -844,7 +852,7 @@ def _compose_orphan_exp_row(sr, line, filters):
         "total_purchase": amount,
         "supplier": line.employee_name or "Expense Claim",
         "unit_sell_price": amount,
-        "pricing_comment": "Expense reimbursement — review by accountant",
+        "pricing_comment": comment,
         "final_price": amount,
         "status": "Expense Claim",
         "qtn": "",
