@@ -506,7 +506,13 @@ def _fetch_contract_prices_for_codes(item_codes, filters):
 # ---------------------------------------------------------------------------
 def _fetch_orphan_pinv_lines(filters):
     """PINV item lines on this project with no MREQ link, in date window,
-    not yet billed via Quotation."""
+    not yet billed via Quotation.
+
+    Project matching mirrors the MREQ flow: a PINV is "for the project" if
+    any of its lines has the project tag, and we then include all sibling
+    lines (tagged or not) so the team's typical pattern of tagging only
+    one line per invoice doesn't lose the others.
+    """
     rows = frappe.db.sql("""
         SELECT
             pii.name                AS pii_name,
@@ -523,7 +529,11 @@ def _fetch_orphan_pinv_lines(filters):
             pi.status               AS pinv_status
         FROM `tabPurchase Invoice Item` pii
         INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
-        WHERE pii.project = %(project)s
+        WHERE pii.parent IN (
+              SELECT DISTINCT parent
+              FROM `tabPurchase Invoice Item`
+              WHERE project = %(project)s
+          )
           AND pi.docstatus = 1
           AND COALESCE(pii.material_request_item, '') = ''
           AND COALESCE(pii.custom_billed_in_quotation, '') = ''
@@ -544,6 +554,11 @@ def _fetch_orphan_ste_lines(filters):
     window are surfaced as orphan rows — regardless of stock_entry_type
     (per project requirement: "STE are all posted to the project regardless
     of the type"). Accountant decides on review.
+
+    Project matching: include the line if (a) the parent Stock Entry has
+    project tag at header level, OR (b) any line within that Stock Entry
+    has the project tag at line level. Same parent-IN pattern as MREQ and
+    PINV — covers the common case of partial line-level tagging.
     """
     rows = frappe.db.sql("""
         SELECT
@@ -560,7 +575,14 @@ def _fetch_orphan_ste_lines(filters):
             se.stock_entry_type     AS stock_entry_type
         FROM `tabStock Entry Detail` sed
         INNER JOIN `tabStock Entry` se ON se.name = sed.parent
-        WHERE (sed.project = %(project)s OR se.project = %(project)s)
+        WHERE (
+              se.project = %(project)s
+              OR sed.parent IN (
+                  SELECT DISTINCT parent
+                  FROM `tabStock Entry Detail`
+                  WHERE project = %(project)s
+              )
+          )
           AND se.docstatus = 1
           AND COALESCE(sed.custom_billed_in_quotation, '') = ''
           AND se.posting_date BETWEEN %(from_date)s AND %(to_date)s
