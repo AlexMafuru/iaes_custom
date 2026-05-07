@@ -6,6 +6,10 @@ Frappe Query Report. Surfaces every MREQ line for the project, computes the
 full pricing analysis (cost from PINV/EXP/STE → margin test → Final Price),
 and flags status so the accountant can identify what's ready to quote.
 
+ALSO surfaces orphan cost rows (PINV / STE / EXP) that exist on the project
+but have no MREQ link, so missing-MREQ costs can still be reconciled and
+billed. Orphan rows are filtered out once stamped via custom_billed_in_quotation.
+
 ASSUMPTIONS (patch these if wrong on first deploy):
     1. Contract Price List doctype is named exactly "Contract Price List"
        with fields: item_code, project, contract_price_vat_excl,
@@ -23,6 +27,12 @@ ASSUMPTIONS (patch these if wrong on first deploy):
     6. 20% threshold:
          - Test:  reference_price >= cost * 1.20  (markup test)
          - Final: cost / 0.80 when generating from cost (true 20% margin)
+    7. Orphan filter: PINV/STE Item lines without material_request_item link
+       are surfaced as separate rows; EXP Claims with project tag but no
+       MREQ-mapping are surfaced per detail line.
+    8. custom_billed_in_quotation field exists on Purchase Invoice Item,
+       Stock Entry Detail, and Expense Claim (header). Created via
+       scripts/create_billing_fields.py.
 
 PLACEMENT:
     /apps/<your_app>/<your_app>/<module>/report/nmb_hq_monthly_billing/
@@ -119,35 +129,70 @@ def _build_columns():
 # ---------------------------------------------------------------------------
 def _build_data(filters):
     mreq_lines = _fetch_mreq_lines(filters)
-    if not mreq_lines:
-        return []
 
-    line_names = [line.mreq_item_name for line in mreq_lines]
+    # Orphan source rows — PINV/STE/EXP on the project with no MREQ link
+    orphan_pinv = _fetch_orphan_pinv_lines(filters)
+    orphan_ste = _fetch_orphan_ste_lines(filters)
+    orphan_exp = _fetch_orphan_exp_lines(filters)
 
-    pinv_map = _fetch_pinv_for_lines(line_names)
-    po_map = _fetch_po_for_lines(line_names)
-    prec_map = _fetch_prec_for_lines(line_names)
-    dn_map = _fetch_dn_for_lines(line_names)
-    ste_map = _fetch_ste_matches(mreq_lines, filters)
-    exp_map = _fetch_exp_matches(mreq_lines, filters)
-    contract_map = _fetch_contract_prices(mreq_lines, filters)
+    # Pre-fetch contract prices for the union of all item codes (MREQ + orphans).
+    # One DB hit instead of two.
+    all_item_codes = set()
+    for line in mreq_lines:
+        if line.item_code:
+            all_item_codes.add(line.item_code)
+    for line in orphan_pinv:
+        if line.item_code:
+            all_item_codes.add(line.item_code)
+    for line in orphan_ste:
+        if line.item_code:
+            all_item_codes.add(line.item_code)
+    contract_map = _fetch_contract_prices_for_codes(list(all_item_codes), filters)
 
     rows = []
-    for i, line in enumerate(mreq_lines, start=1):
-        row = _compose_row(
-            i, line,
-            pinv_map.get(line.mreq_item_name, {}),
-            po_map.get(line.mreq_item_name, []),
-            prec_map.get(line.mreq_item_name, []),
-            dn_map.get(line.mreq_item_name, []),
-            ste_map.get(line.mreq_item_name, []),
-            exp_map.get(line.mreq_item_name, []),
-            contract_map.get(line.item_code),
-        )
+    sr = 1
 
-        if filters.get("hide_quoted") and row["status"] == "Quoted":
-            continue
+    # ---- MREQ-driven rows (existing flow, unchanged) ----
+    if mreq_lines:
+        line_names = [line.mreq_item_name for line in mreq_lines]
+        pinv_map = _fetch_pinv_for_lines(line_names)
+        po_map = _fetch_po_for_lines(line_names)
+        prec_map = _fetch_prec_for_lines(line_names)
+        dn_map = _fetch_dn_for_lines(line_names)
+        ste_map = _fetch_ste_matches(mreq_lines, filters)
+        exp_map = _fetch_exp_matches(mreq_lines, filters)
+
+        for line in mreq_lines:
+            row = _compose_row(
+                sr, line,
+                pinv_map.get(line.mreq_item_name, {}),
+                po_map.get(line.mreq_item_name, []),
+                prec_map.get(line.mreq_item_name, []),
+                dn_map.get(line.mreq_item_name, []),
+                ste_map.get(line.mreq_item_name, []),
+                exp_map.get(line.mreq_item_name, []),
+                contract_map.get(line.item_code),
+            )
+            if filters.get("hide_quoted") and row["status"] == "Quoted":
+                continue
+            rows.append(row)
+            sr += 1
+
+    # ---- Orphan rows (new — Phase 2 / Option 2) ----
+    for line in orphan_pinv:
+        row = _compose_orphan_pinv_row(sr, line, contract_map.get(line.item_code), filters)
         rows.append(row)
+        sr += 1
+
+    for line in orphan_ste:
+        row = _compose_orphan_ste_row(sr, line, contract_map.get(line.item_code), filters)
+        rows.append(row)
+        sr += 1
+
+    for line in orphan_exp:
+        row = _compose_orphan_exp_row(sr, line, filters)
+        rows.append(row)
+        sr += 1
 
     return rows
 
@@ -392,8 +437,14 @@ def _fetch_exp_matches(mreq_lines, filters):
 
 
 def _fetch_contract_prices(mreq_lines, filters):
-    """Look up each item code in the Contract Price List for this project."""
+    """Backward-compat wrapper — extracts item_codes from MREQ lines."""
     item_codes = list({line.item_code for line in mreq_lines if line.item_code})
+    return _fetch_contract_prices_for_codes(item_codes, filters)
+
+
+def _fetch_contract_prices_for_codes(item_codes, filters):
+    """Look up contract prices for an arbitrary list of item codes against
+    the filter project. Used by both MREQ rows and orphan rows."""
     if not item_codes:
         return {}
 
@@ -429,6 +480,113 @@ def _fetch_contract_prices(mreq_lines, filters):
             continue
         out[r.item_code] = flt(r.contract_price)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Orphan fetchers — surface PINV / STE / EXP rows on the project with no
+# MREQ link, so missing-MREQ costs can be reconciled and billed.
+# Filtered out once stamped via custom_billed_in_quotation.
+# ---------------------------------------------------------------------------
+def _fetch_orphan_pinv_lines(filters):
+    """PINV item lines on this project with no MREQ link, in date window,
+    not yet billed via Quotation."""
+    rows = frappe.db.sql("""
+        SELECT
+            pii.name                AS pii_name,
+            pii.parent              AS pinv,
+            pii.item_code           AS item_code,
+            pii.item_name           AS item_name,
+            pii.description         AS description,
+            pii.qty                 AS qty,
+            pii.uom                 AS uom,
+            pii.rate                AS rate,
+            pii.amount              AS amount,
+            pi.posting_date         AS posting_date,
+            pi.supplier             AS supplier,
+            pi.status               AS pinv_status
+        FROM `tabPurchase Invoice Item` pii
+        INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
+        WHERE pii.project = %(project)s
+          AND pi.docstatus = 1
+          AND COALESCE(pii.material_request_item, '') = ''
+          AND COALESCE(pii.custom_billed_in_quotation, '') = ''
+          AND pi.posting_date BETWEEN %(from_date)s AND %(to_date)s
+        ORDER BY pi.posting_date, pi.name, pii.idx
+    """, {
+        "project": filters.project,
+        "from_date": filters.from_date,
+        "to_date": filters.to_date,
+    }, as_dict=True)
+    return rows
+
+
+def _fetch_orphan_ste_lines(filters):
+    """Stock Entry detail lines on this project, in date window, not yet billed.
+
+    STE has no native MREQ link, so ALL project-tagged STE detail lines in the
+    window are surfaced as orphan rows — regardless of stock_entry_type
+    (per project requirement: "STE are all posted to the project regardless
+    of the type"). Accountant decides on review.
+    """
+    rows = frappe.db.sql("""
+        SELECT
+            sed.name                AS sed_name,
+            sed.parent              AS ste,
+            sed.item_code           AS item_code,
+            sed.item_name           AS item_name,
+            sed.description         AS description,
+            sed.qty                 AS qty,
+            sed.uom                 AS uom,
+            sed.basic_rate          AS rate,
+            sed.amount              AS amount,
+            se.posting_date         AS posting_date,
+            se.stock_entry_type     AS stock_entry_type
+        FROM `tabStock Entry Detail` sed
+        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+        WHERE (sed.project = %(project)s OR se.project = %(project)s)
+          AND se.docstatus = 1
+          AND COALESCE(sed.custom_billed_in_quotation, '') = ''
+          AND se.posting_date BETWEEN %(from_date)s AND %(to_date)s
+        ORDER BY se.posting_date, se.name, sed.idx
+    """, {
+        "project": filters.project,
+        "from_date": filters.from_date,
+        "to_date": filters.to_date,
+    }, as_dict=True)
+    return rows
+
+
+def _fetch_orphan_exp_lines(filters):
+    """Expense Claim detail lines on this project, approved, in date window,
+    not yet billed.
+
+    custom_billed_in_quotation lives on the Expense Claim header (claim-level
+    billing), so once stamped, ALL detail lines of that claim disappear from
+    subsequent report runs.
+    """
+    rows = frappe.db.sql("""
+        SELECT
+            ecd.name                AS ecd_name,
+            ec.name                 AS exp,
+            ecd.expense_type        AS expense_type,
+            ecd.description         AS description,
+            ecd.sanctioned_amount   AS amount,
+            ec.posting_date         AS posting_date,
+            ec.employee_name        AS employee_name
+        FROM `tabExpense Claim Detail` ecd
+        INNER JOIN `tabExpense Claim` ec ON ec.name = ecd.parent
+        WHERE ec.project = %(project)s
+          AND ec.docstatus = 1
+          AND ec.approval_status = 'Approved'
+          AND COALESCE(ec.custom_billed_in_quotation, '') = ''
+          AND ec.posting_date BETWEEN %(from_date)s AND %(to_date)s
+        ORDER BY ec.posting_date, ec.name, ecd.idx
+    """, {
+        "project": filters.project,
+        "from_date": filters.from_date,
+        "to_date": filters.to_date,
+    }, as_dict=True)
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +698,159 @@ def _compute_status(line, cost, qty_paid_or_issued, qty_delivered):
     if qty_paid_or_issued <= 0:
         return "Not yet paid"
     return "Ready to quote"
+
+
+# ---------------------------------------------------------------------------
+# Orphan row composers — apply same Schedule III pricing logic as MREQ rows
+# for PINV/STE; EXP rows pass through at sanctioned amount for accountant
+# review.
+# ---------------------------------------------------------------------------
+def _price_against_contract(cost, contract_price, source_label):
+    """Shared pricing engine: cost → threshold test → final price + comment.
+    source_label appears in the comment so the accountant can tell the row's
+    origin at a glance."""
+    threshold_price = cost * THRESHOLD_MARKUP
+    target_price = cost / TARGET_MARGIN if cost else 0.0
+
+    if cost <= 0:
+        return 0.0, 0.0, "No cost source"
+
+    if contract_price is not None and contract_price > 0:
+        if contract_price >= threshold_price:
+            return contract_price, contract_price, f"Contract – OK ({source_label})"
+        margin_pct = ((contract_price - cost) / contract_price * 100) if contract_price else 0
+        return (
+            contract_price,
+            target_price,
+            f"Below threshold (contract margin {margin_pct:.1f}%) – marked up to true 20% ({source_label})",
+        )
+
+    return target_price, target_price, f"Not in contract – market price + true 20% margin ({source_label})"
+
+
+def _compose_orphan_pinv_row(sr, line, contract_price, filters):
+    """Compose a report row from an orphan Purchase Invoice item line."""
+    qty = flt(line.qty)
+    cost = flt(line.rate)
+    unit_sell_price, final_price, comment = _price_against_contract(
+        cost, contract_price, "orphan PINV"
+    )
+
+    return {
+        "sr_no": sr,
+        "transaction_date": line.posting_date,
+        "approved_requisition_no": "",
+        "mreq": "",
+        "mreq_item_name": "",
+        "item_name": line.item_name or "",
+        "item_code": line.item_code or "",
+        "qty_ordered": qty,
+        "uom": line.uom or "",
+        "scope": "",
+        "hq_zone": "",
+        "po": "",
+        "pinv": line.pinv or "",
+        "exp": "",
+        "ste": "",
+        "prec": "",
+        "dnote": "",
+        "qty_delivered": 0,
+        "balance": 0,
+        "unit_cost": cost,
+        "total_purchase": flt(line.amount),
+        "supplier": line.supplier or "",
+        "unit_sell_price": unit_sell_price,
+        "pricing_comment": comment,
+        "final_price": final_price,
+        "status": "Orphan PINV",
+        "qtn": "",
+        "project": filters.project,
+        "currency": "TZS",
+    }
+
+
+def _compose_orphan_ste_row(sr, line, contract_price, filters):
+    """Compose a report row from an orphan Stock Entry detail line."""
+    qty = flt(line.qty)
+    cost = flt(line.rate)  # basic_rate
+    unit_sell_price, final_price, comment = _price_against_contract(
+        cost, contract_price, "orphan STE"
+    )
+
+    return {
+        "sr_no": sr,
+        "transaction_date": line.posting_date,
+        "approved_requisition_no": "",
+        "mreq": "",
+        "mreq_item_name": "",
+        "item_name": line.item_name or "",
+        "item_code": line.item_code or "",
+        "qty_ordered": qty,
+        "uom": line.uom or "",
+        "scope": "",
+        "hq_zone": "",
+        "po": "",
+        "pinv": "",
+        "exp": "",
+        "ste": line.ste or "",
+        "prec": "",
+        "dnote": "",
+        "qty_delivered": 0,
+        "balance": 0,
+        "unit_cost": cost,
+        "total_purchase": flt(line.amount),
+        "supplier": f"Stock Entry ({line.stock_entry_type})" if line.stock_entry_type else "Stock Entry",
+        "unit_sell_price": unit_sell_price,
+        "pricing_comment": comment,
+        "final_price": final_price,
+        "status": "Orphan STE",
+        "qtn": "",
+        "project": filters.project,
+        "currency": "TZS",
+    }
+
+
+def _compose_orphan_exp_row(sr, line, filters):
+    """Compose a report row from an Expense Claim detail line.
+    Per-row spec: description verbatim → item_name, qty=1, uom=Pc,
+    sanctioned_amount → unit_cost = final_price (pass-through).
+    No contract lookup — accountant reviews and adjusts on the Quotation.
+    """
+    amount = flt(line.amount)
+    item_name_raw = (line.description or line.expense_type or "Expense").strip()
+    item_name = item_name_raw[:140]  # truncate to fit column width
+
+    return {
+        "sr_no": sr,
+        "transaction_date": line.posting_date,
+        "approved_requisition_no": "",
+        "mreq": "",
+        "mreq_item_name": "",
+        "item_name": item_name,
+        "item_code": "",
+        "qty_ordered": 1,
+        "uom": "Pc",
+        "scope": "",
+        "hq_zone": "",
+        "po": "",
+        "pinv": "",
+        "exp": line.exp or "",
+        "ste": "",
+        "prec": "",
+        "dnote": "",
+        "qty_delivered": 0,
+        "balance": 0,
+        "unit_cost": amount,
+        "total_purchase": amount,
+        "supplier": line.employee_name or "Expense Claim",
+        "unit_sell_price": amount,
+        "pricing_comment": "Expense reimbursement — review by accountant",
+        "final_price": amount,
+        "status": "Expense Claim",
+        "qtn": "",
+        "project": filters.project,
+        "currency": "TZS",
+    }
 
 
 # ---------------------------------------------------------------------------
