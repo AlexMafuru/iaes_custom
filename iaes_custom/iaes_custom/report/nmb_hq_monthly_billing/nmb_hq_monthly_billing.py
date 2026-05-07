@@ -103,12 +103,12 @@ def _build_columns():
         {"label": _("UoM"), "fieldname": "uom", "fieldtype": "Data", "width": 60},
         {"label": _("Scope"), "fieldname": "scope", "fieldtype": "Data", "width": 100},
         {"label": _("HQ/Zone"), "fieldname": "hq_zone", "fieldtype": "Data", "width": 100},
-        {"label": _("PO"), "fieldname": "po", "fieldtype": "Data", "width": 110},
-        {"label": _("PINV"), "fieldname": "pinv", "fieldtype": "Data", "width": 110},
-        {"label": _("EXP"), "fieldname": "exp", "fieldtype": "Data", "width": 110},
-        {"label": _("STE"), "fieldname": "ste", "fieldtype": "Data", "width": 110},
-        {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Data", "width": 110},
-        {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Data", "width": 110},
+        {"label": _("PO"), "fieldname": "po", "fieldtype": "Link", "options": "Purchase Order", "width": 110},
+        {"label": _("PINV"), "fieldname": "pinv", "fieldtype": "Link", "options": "Purchase Invoice", "width": 110},
+        {"label": _("EXP"), "fieldname": "exp", "fieldtype": "Link", "options": "Expense Claim", "width": 110},
+        {"label": _("STE"), "fieldname": "ste", "fieldtype": "Link", "options": "Stock Entry", "width": 110},
+        {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Link", "options": "Purchase Receipt", "width": 110},
+        {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
         {"label": _("Qty Delivered"), "fieldname": "qty_delivered", "fieldtype": "Float", "width": 90, "precision": 2},
         {"label": _("Balance"), "fieldname": "balance", "fieldtype": "Float", "width": 80, "precision": 2},
         {"label": _("Unit Cost"), "fieldname": "unit_cost", "fieldtype": "Currency", "options": "currency", "width": 110},
@@ -201,7 +201,20 @@ def _build_data(filters):
 # Source fetchers — each returns a dict keyed by Material Request Item.name
 # ---------------------------------------------------------------------------
 def _fetch_mreq_lines(filters):
-    """All MREQ Item rows for the project in the date window."""
+    """All MREQ Item rows belonging to a Material Request that has at least
+    one line tagged for the filter project, within the date window.
+
+    Note on project matching: standard ERPNext doesn't auto-cascade the
+    project field from one MREQ Item line to its siblings. In practice
+    teams tend to tag project on only one line per MR (often the first).
+    Filtering strictly on `mri.project = X` would miss the untagged
+    sibling lines even though the MR as a whole is for that project.
+
+    Matching against `parent IN (subquery)` mirrors the Material Request
+    list-view's behaviour: an MR appears for project X if any of its
+    lines points to X, and all of its lines are then included in the
+    report.
+    """
     extra_conditions = ""
     if filters.get("scope"):
         extra_conditions += " AND mri.custom_scope = %(scope)s"
@@ -227,7 +240,11 @@ def _fetch_mreq_lines(filters):
         FROM `tabMaterial Request` mr
         INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
         WHERE mr.docstatus = 1
-          AND mri.project = %(project)s
+          AND mri.parent IN (
+              SELECT DISTINCT parent
+              FROM `tabMaterial Request Item`
+              WHERE project = %(project)s
+          )
           AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
           {extra_conditions}
         ORDER BY mr.transaction_date, mr.name, mri.idx
