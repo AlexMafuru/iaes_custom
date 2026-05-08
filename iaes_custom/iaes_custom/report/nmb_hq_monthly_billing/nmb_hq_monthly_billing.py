@@ -23,7 +23,8 @@ ASSUMPTIONS (patch these if wrong on first deploy):
        posting date in window.
     4. EXP Claim has no native link to MREQ — matched on
        Expense Claim.project + description LIKE %item_name%.
-    5. Cost basis order: PINV (status='Paid') → STE valuation_rate → EXP fuzzy.
+    5. Cost basis order: PINV (any submitted, payment status surfaced in Comments)
+       → STE valuation_rate → EXP fuzzy.
     6. 20% threshold:
          - Test:  reference_price >= cost * 1.20  (markup test)
          - Final: cost / 0.80 when generating from cost (true 20% margin)
@@ -253,8 +254,20 @@ def _fetch_mreq_lines(filters):
 
 
 def _fetch_pinv_for_lines(line_names):
-    """Paid PINV item lines linked to the MREQ Item rows.
-    Returns: {mreq_item_name: {pinv: 'PINV-X', rate, qty, supplier}}
+    """Submitted PINV item lines linked to the MREQ Item rows.
+
+    Returns the most recent submitted invoice per MREQ Item.
+
+    NOTE on payment status: previously this fetcher filtered to
+    pi.status = 'Paid' only. That hid invoices that were Submitted but
+    not yet paid by AP — meaning items with a real cost booked into
+    accounts and ready for billing reconciliation were invisible. Cost
+    is real once an invoice is submitted; payment status is a
+    downstream AP workflow concern. Status is now surfaced in the
+    'Comments' column so the accountant sees Paid vs Unpaid vs Overdue
+    at a glance and can include or exclude based on policy.
+
+    Returns: {mreq_item_name: {pinvs: [...], rate, qty, supplier, status}}
     """
     if not line_names:
         return {}
@@ -272,7 +285,6 @@ def _fetch_pinv_for_lines(line_names):
         INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
         WHERE pii.material_request_item IN %(line_names)s
           AND pi.docstatus = 1
-          AND pi.status = 'Paid'
         ORDER BY pi.posting_date DESC
     """, {"line_names": line_names}, as_dict=True)
 
@@ -285,6 +297,7 @@ def _fetch_pinv_for_lines(line_names):
                 "rate": flt(r.rate),
                 "qty_paid": flt(r.qty),
                 "supplier": r.supplier,
+                "status": r.status,
             }
         else:
             if r.pinv not in existing["pinvs"]:
@@ -639,11 +652,13 @@ def _compose_row(sr, line, pinv, po_list, prec_list, dn_list, ste_data, exp_data
     cost = 0.0
     supplier = ""
     qty_paid_or_issued = 0.0
+    pinv_status = ""
 
     if pinv:
         cost = flt(pinv.get("rate"))
         supplier = pinv.get("supplier") or ""
         qty_paid_or_issued = flt(pinv.get("qty_paid"))
+        pinv_status = pinv.get("status") or ""
     elif ste_data and flt(ste_data.get("valuation_rate")):
         cost = flt(ste_data["valuation_rate"])
         supplier = "Stock Issue (STE)"
@@ -675,6 +690,10 @@ def _compose_row(sr, line, pinv, po_list, prec_list, dn_list, ste_data, exp_data
         unit_sell_price = target_price
         final_price = target_price
         comment = "Not in contract – market price + true 20% margin"
+
+    # Annotate with PINV payment status so AP can act on Unpaid/Overdue
+    if pinv_status and cost > 0:
+        comment = f"{comment} | PINV {pinv_status}"
 
     # No accountant override branch — pricing is computed on the fly.
     # If you need to override a price, edit it on the generated Quotation
