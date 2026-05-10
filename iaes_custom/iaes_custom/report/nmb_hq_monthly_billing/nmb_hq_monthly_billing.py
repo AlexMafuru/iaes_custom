@@ -522,10 +522,12 @@ def _fetch_orphan_pinv_lines(filters):
     """PINV item lines on this project with no MREQ link, in date window,
     not yet billed via Quotation.
 
-    Project matching mirrors the MREQ flow: a PINV is "for the project" if
-    any of its lines has the project tag, and we then include all sibling
-    lines (tagged or not) so the team's typical pattern of tagging only
-    one line per invoice doesn't lose the others.
+    Project matching mirrors the MREQ flow AND the STE flow: a PINV is
+    "for the project" if (a) the parent invoice has the project tag at
+    header level, OR (b) any of its lines has the project tag at line
+    level. We then include all sibling lines (tagged or not) so the
+    team's typical pattern of tagging only one place per invoice
+    doesn't lose data.
     """
     rows = frappe.db.sql("""
         SELECT
@@ -543,10 +545,13 @@ def _fetch_orphan_pinv_lines(filters):
             pi.status               AS pinv_status
         FROM `tabPurchase Invoice Item` pii
         INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
-        WHERE pii.parent IN (
-              SELECT DISTINCT parent
-              FROM `tabPurchase Invoice Item`
-              WHERE project = %(project)s
+        WHERE (
+              pi.project = %(project)s
+              OR pii.parent IN (
+                  SELECT DISTINCT parent
+                  FROM `tabPurchase Invoice Item`
+                  WHERE project = %(project)s
+              )
           )
           AND pi.docstatus = 1
           AND COALESCE(pii.material_request_item, '') = ''
