@@ -107,7 +107,9 @@ def _build_columns():
         {"label": _("HQ/Zone"), "fieldname": "hq_zone", "fieldtype": "Data", "width": 100},
         {"label": _("PO"), "fieldname": "po", "fieldtype": "Link", "options": "Purchase Order", "width": 110},
         {"label": _("PINV"), "fieldname": "pinv", "fieldtype": "Link", "options": "Purchase Invoice", "width": 110},
+        {"label": _("PINV Status"), "fieldname": "pinv_status", "fieldtype": "Data", "width": 110},
         {"label": _("EXP"), "fieldname": "exp", "fieldtype": "Link", "options": "Expense Claim", "width": 110},
+        {"label": _("EXP Status"), "fieldname": "exp_status", "fieldtype": "Data", "width": 110},
         {"label": _("STE"), "fieldname": "ste", "fieldtype": "Link", "options": "Stock Entry", "width": 110},
         {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Link", "options": "Purchase Receipt", "width": 110},
         {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
@@ -439,6 +441,7 @@ def _fetch_exp_matches(mreq_lines, filters):
     rows = frappe.db.sql("""
         SELECT
             ec.name             AS exp,
+            ec.status           AS status,
             ecd.description     AS description,
             ecd.sanctioned_amount AS amount,
             ec.posting_date     AS posting_date
@@ -460,10 +463,12 @@ def _fetch_exp_matches(mreq_lines, filters):
             if not r.description:
                 continue
             if item_name.lower() in r.description.lower() or r.description.lower() in item_name.lower():
-                existing = out.setdefault(line_name, {"exps": [], "amount": 0})
+                existing = out.setdefault(line_name, {"exps": [], "amount": 0, "status": r.status})
                 if r.exp not in existing["exps"]:
                     existing["exps"].append(r.exp)
                 existing["amount"] += flt(r.amount)
+                # Most recent status wins (last loop iteration of matching)
+                existing["status"] = r.status
     return out
 
 
@@ -626,6 +631,7 @@ def _fetch_orphan_exp_lines(filters):
         SELECT
             ecd.name                AS ecd_name,
             ec.name                 AS exp,
+            ec.status               AS status,
             ecd.expense_type        AS expense_type,
             ecd.description         AS description,
             ecd.sanctioned_amount   AS amount,
@@ -733,7 +739,9 @@ def _compose_row(sr, line, pinv, po_list, prec_list, dn_list, ste_data, exp_data
         "hq_zone": line.hq_zone or "",
         "po": ", ".join(po_list) if po_list else "",
         "pinv": ", ".join(pinv.get("pinvs", [])) if pinv else "",
+        "pinv_status": pinv.get("status") if pinv else "",
         "exp": ", ".join(exp_data.get("exps", [])) if exp_data else "",
+        "exp_status": exp_data.get("status") if exp_data else "",
         "ste": ", ".join(ste_data.get("stes", [])) if ste_data else "",
         "prec": ", ".join(prec_list) if prec_list else "",
         "dnote": ", ".join(dn_list.get("dns", [])) if isinstance(dn_list, dict) else "",
@@ -816,7 +824,9 @@ def _compose_orphan_pinv_row(sr, line, contract_price, filters):
         "hq_zone": "",
         "po": "",
         "pinv": line.pinv or "",
+        "pinv_status": line.pinv_status or "",
         "exp": "",
+        "exp_status": "",
         "ste": "",
         "prec": "",
         "dnote": "",
@@ -858,7 +868,9 @@ def _compose_orphan_ste_row(sr, line, contract_price, filters):
         "hq_zone": "",
         "po": "",
         "pinv": "",
+        "pinv_status": "",
         "exp": "",
+        "exp_status": "",
         "ste": line.ste or "",
         "prec": "",
         "dnote": "",
@@ -910,7 +922,9 @@ def _compose_orphan_exp_row(sr, line, filters):
         "hq_zone": "",
         "po": "",
         "pinv": "",
+        "pinv_status": "",
         "exp": line.exp or "",
+        "exp_status": line.status or "",
         "ste": "",
         "prec": "",
         "dnote": "",
