@@ -85,8 +85,8 @@ def get_data(filters):
         LEFT JOIN (
             SELECT project,
                 SUM(base_net_total)                               AS sinv_value,
-                SUM(GREATEST(base_grand_total - outstanding_amount * COALESCE(conversion_rate, 1), 0)) AS sinv_paid,
-                SUM(LEAST(outstanding_amount * COALESCE(conversion_rate, 1), base_grand_total))        AS sinv_out,
+                SUM(GREATEST(base_grand_total - CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END, 0)) AS sinv_paid,
+                SUM(LEAST(CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END, base_grand_total))        AS sinv_out,
                 COUNT(name)                                       AS sinv_count
             FROM `tabSales Invoice`
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
@@ -95,8 +95,8 @@ def get_data(filters):
         LEFT JOIN (
             SELECT project,
                 SUM(base_net_total)                               AS pinv_value,
-                SUM(GREATEST(base_grand_total - outstanding_amount * COALESCE(conversion_rate, 1), 0)) AS pinv_paid,
-                SUM(LEAST(outstanding_amount * COALESCE(conversion_rate, 1), base_grand_total))        AS pinv_out,
+                SUM(GREATEST(base_grand_total - CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END, 0)) AS pinv_paid,
+                SUM(LEAST(CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END, base_grand_total))        AS pinv_out,
             COUNT(name)                                       AS pinv_count
             FROM `tabPurchase Invoice`
             WHERE docstatus = 1 AND project IS NOT NULL AND project != ''
