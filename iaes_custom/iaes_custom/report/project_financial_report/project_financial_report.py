@@ -95,7 +95,7 @@ def get_data(filters):
         LEFT JOIN (
             SELECT project,
                 SUM(base_net_total)                               AS pinv_value,
-                SUM(GREATEST(base_grand_total - CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END, 0)) AS pinv_paid,
+                SUM(CASE WHEN (base_grand_total - CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END) > 1 THEN (base_grand_total - CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END) ELSE 0 END) AS pinv_paid,
                 SUM(CASE WHEN party_account_currency = 'TZS' THEN outstanding_amount ELSE outstanding_amount * COALESCE(conversion_rate, 1) END)                                 AS pinv_out,
                 COUNT(name)                                       AS pinv_count
             FROM `tabPurchase Invoice`
