@@ -31,7 +31,7 @@ frappe.query_reports["NMB Zone Monthly Billing"] = {
             fieldname: "zone",
             label:     __("Zone"),
             fieldtype: "Select",
-            options:   ["", "Central Zone", "Southern Zone"],
+            options:   ["", "Central Zone", "Southern Zone", "Western Zone"],
         },
     ],
 
