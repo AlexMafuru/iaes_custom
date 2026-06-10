@@ -253,3 +253,9 @@ fixtures = [
     {"dt": "Custom Field", "filters": [["module", "=", "IAES Custom"]]},
     {"dt": "Client Script", "filters": [["module", "=", "IAES Custom"]]},
 ]
+
+app_include_js = [
+    "/assets/iaes_custom/js/filter_v5.js",
+    "/assets/iaes_custom/js/id_filter_v2.js",
+    "/assets/iaes_custom/js/listview_calculator.js",
+]
