@@ -77,10 +77,10 @@ iaes.list_calculator = (function () {
         $('body').append(`
             <div id="iaes-calc-btn" title="Totals"
                  style="position:fixed; bottom:20px; right:20px; width:48px; height:48px;
-                        border-radius:10px; background:#4361ee; color:white; display:none;
-                        align-items:center; justify-content:center; font-size:20px;
+                        border-radius:10px; background:#4361ee; color:#fff; display:none;
+                        align-items:center; justify-content:center; line-height:1;
                         cursor:pointer; z-index:1029; box-shadow:var(--shadow-lg);">
-                <i class="fa fa-calculator"></i>
+                <i class="fa fa-calculator" style="font-size:18px;"></i>
             </div>
         `);
 
@@ -125,7 +125,8 @@ iaes.list_calculator = (function () {
         let filters = base_filters.slice();
         if (checked.length) filters.push([doctype, "name", "in", checked]);
 
-        build_panel(cfg);
+        ensure_panel(cfg, doctype);   // build only if missing or doctype changed (keeps drag position)
+        $('#iaes-calc-panel').show();
         $('#iaes-calc-count').text(__("Calculating..."));
 
         frappe.call({
@@ -157,10 +158,20 @@ iaes.list_calculator = (function () {
     }
 
     // -------------------------------------------------------------------
-    // PANEL (rebuilt per doctype so labels/rows match)
+    // PANEL — built once per doctype. ensure_panel() keeps the existing
+    // panel (and its dragged position) when the doctype hasn't changed,
+    // so Refresh only updates the numbers in place.
     // -------------------------------------------------------------------
-    function build_panel(cfg) {
-        $('#iaes-calc-panel').remove();
+    function ensure_panel(cfg, doctype) {
+        const $existing = $('#iaes-calc-panel');
+        if ($existing.length && $existing.attr('data-doctype') === doctype) {
+            return; // reuse current panel; preserve position
+        }
+        $existing.remove();
+        build_panel(cfg, doctype);
+    }
+
+    function build_panel(cfg, doctype) {
 
         let rows_html = cfg.rows.map((row, i) => {
             const colorStyle = row.color === "red"   ? "color:var(--red-600);"
@@ -177,7 +188,7 @@ iaes.list_calculator = (function () {
         }).join('');
 
         $('body').append(`
-            <div id="iaes-calc-panel" style="position:fixed; bottom:80px; right:20px; width:330px;
+            <div id="iaes-calc-panel" data-doctype="${frappe.utils.escape_html(doctype)}" style="position:fixed; bottom:80px; right:20px; width:330px;
                  background:white; border-radius:8px; border:1px solid #d1d8dd;
                  box-shadow:var(--shadow-lg); z-index:1030; font-family:inherit;">
                 <div class="iaes-calc-header" style="padding:10px 15px; background:var(--bg-light-gray);
