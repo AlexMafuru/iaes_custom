@@ -13,7 +13,7 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
-    const BUILD = "2026-06-11-v5";
+    const BUILD = "2026-06-11-v6";
     console.log("[IAES list calculator] build", BUILD, "loaded");
 
     // Remembers where the user dragged the panel (viewport px). Null = default corner.
@@ -142,7 +142,7 @@ iaes.list_calculator = (function () {
                         border-radius:10px; background:#4361ee; display:none;
                         align-items:center; justify-content:center;
                         cursor:pointer; z-index:1029; box-shadow:var(--shadow-lg);">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="display:block;"
                      stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="4" y="2" width="16" height="20" rx="2.5"></rect>
                     <rect x="7" y="5" width="10" height="3.5" rx="0.5" fill="#ffffff" stroke="none"></rect>
