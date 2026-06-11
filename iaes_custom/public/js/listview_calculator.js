@@ -13,7 +13,7 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
-    const BUILD = "2026-06-11-v6";
+    const BUILD = "2026-06-11-v8";
     console.log("[IAES list calculator] build", BUILD, "loaded");
 
     // Remembers where the user dragged the panel (viewport px). Null = default corner.
@@ -180,8 +180,12 @@ iaes.list_calculator = (function () {
         const route = frappe.get_route() || [];
         const on_list = route[0] === "List" && CALC_CONFIG[route[1]];
         ensure_button();
-        $('#iaes-calc-btn').toggle(!!on_list);
-        if (!on_list) $('#iaes-calc-panel').hide();
+        if (on_list) { show_button(); } else { $('#iaes-calc-btn').hide(); $('#iaes-calc-panel').hide(); }
+    }
+
+    // Always reveal with full flex centering so the icon can never drift to a corner.
+    function show_button() {
+        $('#iaes-calc-btn').css({ display: 'flex', alignItems: 'center', justifyContent: 'center' });
     }
 
     // -------------------------------------------------------------------
@@ -351,7 +355,7 @@ iaes.list_calculator = (function () {
         existing.onload = function (listview) {
             if (prev_onload) prev_onload(listview);   // preserve any other script's onload
             ensure_button();
-            $('#iaes-calc-btn').show();
+            show_button();
         };
         frappe.listview_settings[dt] = existing;
     });
