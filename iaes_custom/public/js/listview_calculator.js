@@ -13,23 +13,71 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
-    const BUILD = "2026-06-11-v3";
+    const BUILD = "2026-06-11-v5";
     console.log("[IAES list calculator] build", BUILD, "loaded");
 
     // Remembers where the user dragged the panel (viewport px). Null = default corner.
     let last_pos = null;
 
+    // Keep a value within [min, max].
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    // Keep the panel fully on screen given its current size.
+    function clamp_to_viewport(left, top) {
+        const $p = $('#iaes-calc-panel');
+        const w = $p.outerWidth()  || 330;
+        const h = $p.outerHeight() || 220;
+        return {
+            left: clamp(left, 4, window.innerWidth  - w - 4),
+            top:  clamp(top,  4, window.innerHeight - h - 4)
+        };
+    }
+
     function apply_pos($p) {
         if (last_pos) {
-            $p.css({ left: last_pos.left + "px", top: last_pos.top + "px", right: "auto", bottom: "auto" });
+            const c = clamp_to_viewport(last_pos.left, last_pos.top);
+            $p.css({ left: c.left + "px", top: c.top + "px", right: "auto", bottom: "auto" });
+        }
+    }
+
+    // Copy text with a fallback for non-HTTPS / blocked-clipboard cases.
+    function copy_text(text) {
+        const done = () => frappe.show_alert({ message: __("Copied"), indicator: "green" }, 1);
+        const fail = () => frappe.show_alert({ message: __("Copy failed — select and copy manually"), indicator: "red" }, 3);
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(() => fallback());
+            } else {
+                fallback();
+            }
+        } catch (e) {
+            fallback();
+        }
+        function fallback() {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                done();
+            } catch (e2) {
+                fail();
+            }
         }
     }
 
     // -------------------------------------------------------------------
     // CONFIG — one entry per list view. label = display, field = docfield.
-    // color "red"/"green" optional. Use base_* fields if you total across
-    // foreign-currency documents; otherwise the document-currency fields below
-    // are fine for TZS-only lists.
+    // color "red"/"green" optional.
+    // Add  use_base: true  to a doctype entry to total in COMPANY currency
+    // (uses base_net_total, base_grand_total, etc.) — useful for lists that
+    // mix foreign-currency documents. Default totals in document currency.
     // -------------------------------------------------------------------
     const CALC_CONFIG = {
         "Quotation": {
@@ -84,24 +132,29 @@ iaes.list_calculator = (function () {
     // BUTTON + PANEL injection (shared across every configured doctype)
     // -------------------------------------------------------------------
     function ensure_button() {
-        $('#iaes-calc-btn').remove();   // always rebuild so the current icon wins
+        const $b = $('#iaes-calc-btn');
+        if ($b.length && $b.attr('data-build') === BUILD) return;   // already current; just keep it
+        $b.remove();   // missing or from an older build -> rebuild once
 
         $('body').append(`
-            <div id="iaes-calc-btn" title="Totals"
+            <div id="iaes-calc-btn" data-build="${BUILD}" title="Totals"
                  style="position:fixed; bottom:20px; right:20px; width:48px; height:48px;
                         border-radius:10px; background:#4361ee; display:none;
                         align-items:center; justify-content:center;
                         cursor:pointer; z-index:1029; box-shadow:var(--shadow-lg);">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                     stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="4" y="2" width="16" height="20" rx="2"></rect>
-                    <line x1="8" y1="6" x2="16" y2="6"></line>
-                    <line x1="8" y1="14" x2="8" y2="14"></line>
-                    <line x1="12" y1="14" x2="12" y2="14"></line>
-                    <line x1="16" y1="14" x2="16" y2="14"></line>
-                    <line x1="8" y1="18" x2="8" y2="18"></line>
-                    <line x1="12" y1="18" x2="12" y2="18"></line>
-                    <line x1="16" y1="18" x2="16" y2="18"></line>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+                     stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2.5"></rect>
+                    <rect x="7" y="5" width="10" height="3.5" rx="0.5" fill="#ffffff" stroke="none"></rect>
+                    <line x1="8"  y1="12" x2="8"  y2="12"></line>
+                    <line x1="12" y1="12" x2="12" y2="12"></line>
+                    <line x1="16" y1="12" x2="16" y2="12"></line>
+                    <line x1="8"  y1="15.5" x2="8"  y2="15.5"></line>
+                    <line x1="12" y1="15.5" x2="12" y2="15.5"></line>
+                    <line x1="16" y1="15.5" x2="16" y2="15.5"></line>
+                    <line x1="8"  y1="19" x2="8"  y2="19"></line>
+                    <line x1="12" y1="19" x2="12" y2="19"></line>
+                    <line x1="16" y1="19" x2="16" y2="19"></line>
                 </svg>
             </div>
         `);
@@ -140,7 +193,11 @@ iaes.list_calculator = (function () {
 
         const { lv, doctype, cfg } = ctx;
         const currency = frappe.defaults.get_global_default('currency');
-        const fields = [...new Set(cfg.rows.map(r => r.field).concat([avg_field(cfg)]))];
+
+        // When use_base is set, total the company-currency fields (base_net_total, base_grand_total, ...)
+        const resolve = f => cfg.use_base ? ("base_" + f) : f;
+        const display_fields = cfg.rows.map(r => resolve(r.field));
+        const fields = [...new Set(display_fields.concat([resolve(avg_field(cfg))]))];
 
         const base_filters = lv.filter_area.get() || [];
         const checked = (lv.get_checked_items ? lv.get_checked_items(true) : []) || [];
@@ -154,8 +211,20 @@ iaes.list_calculator = (function () {
         frappe.call({
             method: "frappe.client.get_list",
             args: { doctype: doctype, fields: fields, filters: filters, limit_page_length: 5000 },
+            error: function () {
+                $('#iaes-calc-count').text(__("Calculation failed — try Refresh."));
+                frappe.show_alert({ message: __("Could not calculate totals"), indicator: "red" }, 5);
+            },
             callback: function (r) {
                 const data = r.message || [];
+
+                if (data.length >= 5000) {
+                    frappe.show_alert({
+                        message: __("Showing first 5000 records only — totals may be incomplete"),
+                        indicator: "orange"
+                    }, 6);
+                }
+
                 const sums = {};
                 fields.forEach(f => sums[f] = 0);
                 data.forEach(d => fields.forEach(f => sums[f] += flt(d[f])));
@@ -168,11 +237,12 @@ iaes.list_calculator = (function () {
                 );
 
                 cfg.rows.forEach((row, i) => {
-                    const formatted = format_currency(sums[row.field], currency);
-                    $(`#iaes-calc-val-${i}`).text(formatted).attr('data-raw', sums[row.field]);
+                    const f = resolve(row.field);
+                    const formatted = format_currency(sums[f], currency);
+                    $(`#iaes-calc-val-${i}`).text(formatted).attr('data-raw', sums[f]);
                 });
 
-                const af = avg_field(cfg);
+                const af = resolve(avg_field(cfg));
                 const avg = data.length ? sums[af] / data.length : 0;
                 $('#iaes-calc-avg').text(format_currency(avg, currency));
             }
@@ -249,10 +319,9 @@ iaes.list_calculator = (function () {
             const offsetY = e.clientY - rect.top;
             e.preventDefault();
             $(document).on('mousemove.iaes-drag', function (ev) {
-                const left = ev.clientX - offsetX;
-                const top  = ev.clientY - offsetY;
-                $panel.css({ left: left + "px", top: top + "px", right: "auto", bottom: "auto" });
-                last_pos = { left: left, top: top };   // remember for next refresh / reopen
+                const c = clamp_to_viewport(ev.clientX - offsetX, ev.clientY - offsetY);
+                $panel.css({ left: c.left + "px", top: c.top + "px", right: "auto", bottom: "auto" });
+                last_pos = { left: c.left, top: c.top };   // remember for next refresh / reopen
             }).on('mouseup.iaes-drag', function () {
                 $(document).off('mousemove.iaes-drag mouseup.iaes-drag');
             });
@@ -262,17 +331,14 @@ iaes.list_calculator = (function () {
         $panel.find('.iaes-calc-refresh').on('click', () => calculate());
 
         $panel.on('click', '.iaes-copy', function () {
-            const val = $(`#${$(this).data('target')}`).attr('data-raw');
-            navigator.clipboard.writeText(val);
-            frappe.show_alert({ message: __("Value Copied"), indicator: "green" }, 1);
+            copy_text($(`#${$(this).data('target')}`).attr('data-raw'));
         });
 
         $panel.find('.iaes-calc-copyall').on('click', () => {
             const lines = [$('#iaes-calc-count').text()];
             cfg.rows.forEach((row, i) => lines.push(`${row.label}: ${$(`#iaes-calc-val-${i}`).text()}`));
             lines.push(`Avg / doc: ${$('#iaes-calc-avg').text()}`);
-            navigator.clipboard.writeText(lines.join('\n'));
-            frappe.show_alert({ message: __("All totals copied"), indicator: "green" }, 1);
+            copy_text(lines.join('\n'));
         });
     }
 
