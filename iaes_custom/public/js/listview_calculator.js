@@ -13,6 +13,18 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
+    const BUILD = "2026-06-11-v3";
+    console.log("[IAES list calculator] build", BUILD, "loaded");
+
+    // Remembers where the user dragged the panel (viewport px). Null = default corner.
+    let last_pos = null;
+
+    function apply_pos($p) {
+        if (last_pos) {
+            $p.css({ left: last_pos.left + "px", top: last_pos.top + "px", right: "auto", bottom: "auto" });
+        }
+    }
+
     // -------------------------------------------------------------------
     // CONFIG — one entry per list view. label = display, field = docfield.
     // color "red"/"green" optional. Use base_* fields if you total across
@@ -72,15 +84,25 @@ iaes.list_calculator = (function () {
     // BUTTON + PANEL injection (shared across every configured doctype)
     // -------------------------------------------------------------------
     function ensure_button() {
-        if ($('#iaes-calc-btn').length) return;
+        $('#iaes-calc-btn').remove();   // always rebuild so the current icon wins
 
         $('body').append(`
             <div id="iaes-calc-btn" title="Totals"
                  style="position:fixed; bottom:20px; right:20px; width:48px; height:48px;
-                        border-radius:10px; background:#4361ee; color:#fff; display:none;
-                        align-items:center; justify-content:center; line-height:1;
+                        border-radius:10px; background:#4361ee; display:none;
+                        align-items:center; justify-content:center;
                         cursor:pointer; z-index:1029; box-shadow:var(--shadow-lg);">
-                <i class="fa fa-calculator" style="font-size:18px;"></i>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                     stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+                    <line x1="8" y1="6" x2="16" y2="6"></line>
+                    <line x1="8" y1="14" x2="8" y2="14"></line>
+                    <line x1="12" y1="14" x2="12" y2="14"></line>
+                    <line x1="16" y1="14" x2="16" y2="14"></line>
+                    <line x1="8" y1="18" x2="8" y2="18"></line>
+                    <line x1="12" y1="18" x2="12" y2="18"></line>
+                    <line x1="16" y1="18" x2="16" y2="18"></line>
+                </svg>
             </div>
         `);
 
@@ -165,10 +187,12 @@ iaes.list_calculator = (function () {
     function ensure_panel(cfg, doctype) {
         const $existing = $('#iaes-calc-panel');
         if ($existing.length && $existing.attr('data-doctype') === doctype) {
-            return; // reuse current panel; preserve position
+            apply_pos($existing);   // keep wherever the user dragged it
+            return;
         }
         $existing.remove();
         build_panel(cfg, doctype);
+        apply_pos($('#iaes-calc-panel'));   // restore dragged position even after a rebuild
     }
 
     function build_panel(cfg, doctype) {
@@ -220,13 +244,18 @@ iaes.list_calculator = (function () {
         const $panel = $('#iaes-calc-panel');
 
         $panel.find('.iaes-calc-header').on('mousedown', function (e) {
-            const offset = $panel.offset();
-            const x = e.pageX - offset.left;
-            const y = e.pageY - offset.top;
-            $(document).on('mousemove.iaes-drag', function (e) {
-                $panel.css({ bottom: 'auto', right: 'auto' });
-                $panel.offset({ top: e.pageY - y, left: e.pageX - x });
-            }).on('mouseup', () => $(document).off('mousemove.iaes-drag'));
+            const rect = $panel[0].getBoundingClientRect();
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            e.preventDefault();
+            $(document).on('mousemove.iaes-drag', function (ev) {
+                const left = ev.clientX - offsetX;
+                const top  = ev.clientY - offsetY;
+                $panel.css({ left: left + "px", top: top + "px", right: "auto", bottom: "auto" });
+                last_pos = { left: left, top: top };   // remember for next refresh / reopen
+            }).on('mouseup.iaes-drag', function () {
+                $(document).off('mousemove.iaes-drag mouseup.iaes-drag');
+            });
         });
 
         $panel.find('.iaes-calc-close').on('click', () => $panel.hide());
