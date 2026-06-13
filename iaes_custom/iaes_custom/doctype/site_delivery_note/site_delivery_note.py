@@ -136,8 +136,9 @@ def _pull_from_purchase_invoice(project, from_date, to_date):
 
     conditions.append("""(
         pii.project = %(project)s
+        OR pi.project = %(project)s
         OR pii.material_request IN (
-            SELECT name FROM `tabMaterial Request` WHERE project = %(project)s
+            SELECT mr.name FROM `tabMaterial Request` mr WHERE mr.project = %(project)s
         )
     )""")
 
@@ -187,8 +188,9 @@ def _pull_from_purchase_order(project, from_date, to_date):
 
     conditions.append("""(
         poi.project = %(project)s
+        OR po.project = %(project)s
         OR poi.material_request IN (
-            SELECT name FROM `tabMaterial Request` WHERE project = %(project)s
+            SELECT mr.name FROM `tabMaterial Request` mr WHERE mr.project = %(project)s
         )
     )""")
 
