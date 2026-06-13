@@ -48,11 +48,10 @@ class SiteDeliveryNote(Document):
     def before_submit(self):
         if not self.items:
             frappe.throw(_("Cannot submit a Site Delivery Note with no items."))
-        self.status = "Submitted"
 
     def on_submit(self):
         # No GL hooks. No stock hooks. Just status bookkeeping.
-        pass
+        self.db_set("status", "Submitted")
 
     def on_cancel(self):
         # If any line has been pulled into a PREC or Quotation, refuse to
@@ -65,7 +64,7 @@ class SiteDeliveryNote(Document):
                 "Purchase Receipt, Quotation, or Sales Invoice. Cancel "
                 "downstream documents first."
             ).format(len(bound)))
-        self.status = "Cancelled"
+        self.db_set("status", "Cancelled")  
 
     # ── validation helpers ──────────────────────────────────────────────────
 
