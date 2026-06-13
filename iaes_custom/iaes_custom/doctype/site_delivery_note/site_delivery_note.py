@@ -138,7 +138,7 @@ def _pull_from_purchase_invoice(project, from_date, to_date):
         pii.project = %(project)s
         OR pi.project = %(project)s
         OR pii.material_request IN (
-            SELECT mr.name FROM `tabMaterial Request` mr WHERE mr.project = %(project)s
+            SELECT mri.parent FROM `tabMaterial Request Item` mri WHERE mri.project = %(project)s
         )
     )""")
 
@@ -190,7 +190,7 @@ def _pull_from_purchase_order(project, from_date, to_date):
         poi.project = %(project)s
         OR po.project = %(project)s
         OR poi.material_request IN (
-            SELECT mr.name FROM `tabMaterial Request` mr WHERE mr.project = %(project)s
+            SELECT mri.parent FROM `tabMaterial Request Item` mri WHERE mri.project = %(project)s
         )
     )""")
 
