@@ -13,7 +13,7 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
-    const BUILD = "2026-06-11-v8";
+    const BUILD = "2026-06-11-v9";
     console.log("[IAES list calculator] build", BUILD, "loaded");
 
     // Remembers where the user dragged the panel (viewport px). Null = default corner.
@@ -75,6 +75,8 @@ iaes.list_calculator = (function () {
     // -------------------------------------------------------------------
     // CONFIG — one entry per list view. label = display, field = docfield.
     // color "red"/"green" optional.
+    // A computed row uses  diff: [fieldA, fieldB]  instead of field, and
+    // shows sum(fieldA) - sum(fieldB)  (e.g. Sanctioned - Reimbursed).
     // Add  use_base: true  to a doctype entry to total in COMPANY currency
     // (uses base_net_total, base_grand_total, etc.) — useful for lists that
     // mix foreign-currency documents. Default totals in document currency.
@@ -112,9 +114,10 @@ iaes.list_calculator = (function () {
         "Expense Claim": {
             title: "Expense Claim Totals",
             rows: [
-                { label: "Claimed",    field: "total_claimed_amount" },
-                { label: "Sanctioned", field: "total_sanctioned_amount" },
-                { label: "Reimbursed", field: "total_amount_reimbursed", color: "green" }
+                { label: "Claimed",     field: "total_claimed_amount" },
+                { label: "Sanctioned",  field: "total_sanctioned_amount" },
+                { label: "Reimbursed",  field: "total_amount_reimbursed", color: "green" },
+                { label: "Outstanding", diff: ["total_sanctioned_amount", "total_amount_reimbursed"], color: "red" }
             ]
         }
         // "Purchase Invoice" is intentionally left out — it already has its own
@@ -122,10 +125,11 @@ iaes.list_calculator = (function () {
         // the floating button there too.
     };
 
-    // The field used for the "Avg / doc" line (falls back to first row field).
+    // The field used for the "Avg / doc" line (prefers grand_total, else first real field).
     function avg_field(cfg) {
-        const has = cfg.rows.find(r => r.field === "grand_total");
-        return has ? "grand_total" : cfg.rows[0].field;
+        if (cfg.rows.some(r => r.field === "grand_total")) return "grand_total";
+        const f = cfg.rows.find(r => r.field);
+        return f ? f.field : null;
     }
 
     // -------------------------------------------------------------------
@@ -200,8 +204,16 @@ iaes.list_calculator = (function () {
 
         // When use_base is set, total the company-currency fields (base_net_total, base_grand_total, ...)
         const resolve = f => cfg.use_base ? ("base_" + f) : f;
-        const display_fields = cfg.rows.map(r => resolve(r.field));
-        const fields = [...new Set(display_fields.concat([resolve(avg_field(cfg))]))];
+
+        // Gather every docfield needed: normal rows (.field) and computed rows (.diff = [a, b]).
+        const field_names = [];
+        cfg.rows.forEach(r => {
+            if (r.field) field_names.push(r.field);
+            if (r.diff) { field_names.push(r.diff[0], r.diff[1]); }
+        });
+        const af = avg_field(cfg);
+        if (af) field_names.push(af);
+        const fields = [...new Set(field_names.map(resolve))];
 
         const base_filters = lv.filter_area.get() || [];
         const checked = (lv.get_checked_items ? lv.get_checked_items(true) : []) || [];
@@ -241,13 +253,16 @@ iaes.list_calculator = (function () {
                 );
 
                 cfg.rows.forEach((row, i) => {
-                    const f = resolve(row.field);
-                    const formatted = format_currency(sums[f], currency);
-                    $(`#iaes-calc-val-${i}`).text(formatted).attr('data-raw', sums[f]);
+                    let val;
+                    if (row.diff) {
+                        val = sums[resolve(row.diff[0])] - sums[resolve(row.diff[1])];
+                    } else {
+                        val = sums[resolve(row.field)];
+                    }
+                    $(`#iaes-calc-val-${i}`).text(format_currency(val, currency)).attr('data-raw', val);
                 });
 
-                const af = resolve(avg_field(cfg));
-                const avg = data.length ? sums[af] / data.length : 0;
+                const avg = (af && data.length) ? sums[resolve(af)] / data.length : 0;
                 $('#iaes-calc-avg').text(format_currency(avg, currency));
             }
         });
