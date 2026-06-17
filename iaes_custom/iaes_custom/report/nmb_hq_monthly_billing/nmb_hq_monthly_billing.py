@@ -60,6 +60,11 @@ CONTRACT_FIELD_TO = "effective_to"
 THRESHOLD_MARKUP = 1.20  # cost * 1.20 = threshold contract price must beat
 TARGET_MARGIN = 0.80     # cost / 0.80 = price giving true 20% margin
 
+# SDN header "Remark" field. CONFIRM the real column name via the
+# information_schema probe before deploying — a wrong name breaks the report
+# query. Change here only.
+SDN_REMARK_FIELD = "remarks"
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -120,6 +125,7 @@ def _build_columns():
         {"label": _("SDN ID"), "fieldname": "sdn_id", "fieldtype": "Data", "width": 150},
         {"label": _("Site Location"), "fieldname": "site_location", "fieldtype": "Data", "width": 140},
         {"label": _("Manual DN Book Ref"), "fieldname": "manual_dn_book_ref", "fieldtype": "Data", "width": 150},
+        {"label": _("Remark"), "fieldname": "sdn_remark", "fieldtype": "Data", "width": 200},
         {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
         {"label": _("Qty Delivered"), "fieldname": "qty_delivered", "fieldtype": "Float", "width": 90, "precision": 2},
         {"label": _("Balance"), "fieldname": "balance", "fieldtype": "Float", "width": 80, "precision": 2},
@@ -715,13 +721,14 @@ def get_sdn_lookup(project):
     pinv / po / exp / ste columns. docstatus = 1 is used (not the status field,
     which can lag on submitted SDNs).
     """
-    rows = frappe.db.sql("""
+    rows = frappe.db.sql(f"""
         SELECT
             sdni.source_document          AS src_doc,
             sdni.item_code                AS item_code,
             sdn.name                      AS sdn_id,
             sdn.site_location             AS site_location,
-            sdn.custom_manual_dn_book_ref AS dn_book_ref
+            sdn.custom_manual_dn_book_ref AS dn_book_ref,
+            sdn.`{SDN_REMARK_FIELD}`      AS remark
         FROM `tabSite Delivery Note Item` sdni
         INNER JOIN `tabSite Delivery Note` sdn ON sdn.name = sdni.parent
         WHERE sdn.docstatus = 1
@@ -732,8 +739,8 @@ def get_sdn_lookup(project):
     for r in rows:
         if not r.src_doc or not r.item_code:
             continue
-        agg = out.setdefault((r.src_doc, r.item_code), {"sdn": [], "loc": [], "ref": []})
-        for col, val in (("sdn", r.sdn_id), ("loc", r.site_location), ("ref", r.dn_book_ref)):
+        agg = out.setdefault((r.src_doc, r.item_code), {"sdn": [], "loc": [], "ref": [], "rem": []})
+        for col, val in (("sdn", r.sdn_id), ("loc", r.site_location), ("ref", r.dn_book_ref), ("rem", r.remark)):
             if val and val not in agg[col]:
                 agg[col].append(val)
     return out
@@ -747,7 +754,7 @@ def attach_sdn_columns(row, sdn_map):
     match (e.g. EXP rows that carry no item_code, or any future subtotal rows).
     """
     item_code = row.get("item_code")
-    sdn_ids, locs, refs = [], [], []
+    sdn_ids, locs, refs, rems = [], [], [], []
 
     if item_code:
         candidates = []
@@ -768,10 +775,14 @@ def attach_sdn_columns(row, sdn_map):
             for ref in hit["ref"]:
                 if ref not in refs:
                     refs.append(ref)
+            for rem in hit["rem"]:
+                if rem not in rems:
+                    rems.append(rem)
 
     row["sdn_id"] = ", ".join(sdn_ids)
     row["site_location"] = ", ".join(locs)
     row["manual_dn_book_ref"] = ", ".join(refs)
+    row["sdn_remark"] = ", ".join(rems)
     return row
 
 
