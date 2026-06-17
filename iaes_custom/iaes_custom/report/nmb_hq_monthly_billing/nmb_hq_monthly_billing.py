@@ -112,14 +112,15 @@ def _build_columns():
         {"label": _("EXP Status"), "fieldname": "exp_status", "fieldtype": "Data", "width": 110},
         {"label": _("STE"), "fieldname": "ste", "fieldtype": "Link", "options": "Stock Entry", "width": 110},
         {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Link", "options": "Purchase Receipt", "width": 110},
-        {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
-        # --- SDN delivery linkage (added) ---
+        # --- SDN delivery linkage (added) --- placed right after PREC,
+        # with Dnote No. following the trio.
         # SDN ID is Data (not Link) because one procurement line can be
         # delivered across several SDNs, producing a comma-joined value that
         # a Link field cannot resolve.
         {"label": _("SDN ID"), "fieldname": "sdn_id", "fieldtype": "Data", "width": 150},
         {"label": _("Site Location"), "fieldname": "site_location", "fieldtype": "Data", "width": 140},
         {"label": _("Manual DN Book Ref"), "fieldname": "manual_dn_book_ref", "fieldtype": "Data", "width": 150},
+        {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
         {"label": _("Qty Delivered"), "fieldname": "qty_delivered", "fieldtype": "Float", "width": 90, "precision": 2},
         {"label": _("Balance"), "fieldname": "balance", "fieldtype": "Float", "width": 80, "precision": 2},
         {"label": _("Unit Cost"), "fieldname": "unit_cost", "fieldtype": "Currency", "options": "currency", "width": 110},
@@ -202,6 +203,37 @@ def _build_data(filters):
 
     for line in orphan_exp:
         row = _compose_orphan_exp_row(sr, line, filters)
+        rows.append(row)
+        sr += 1
+
+    # ---- SDN-delivered rows (new) ----
+    # The SDN is the authoritative record of what physically reached site.
+    # Surface any delivered line NOT already represented by the cost-driven
+    # paths above — chiefly EXP-sourced deliveries, whose Expense Claims are
+    # often project-linked only via the SDN (not the claim header), so they
+    # never appear as orphan EXP rows. Each line carries its SDN item_code, so
+    # it stamps cleanly through attach_sdn_columns below.
+    represented = _build_represented_set(rows)
+    sdn_lines = _fetch_sdn_delivered_lines(filters)
+    source_kinds = _classify_sdn_sources(sdn_lines)
+    sdn_cost = _fetch_sdn_line_costs(sdn_lines, source_kinds)
+    for sl in sdn_lines:
+        sd = sl.source_document or ""
+        ic = sl.item_code or ""
+        inm = (sl.item_name or "").strip().lower()
+        # Skip lines the cost-driven paths already produced (e.g. the PINV
+        # lines) — those rows get stamped by the pass below.
+        if (sd, "ic", ic) in represented:
+            continue
+        if inm and (sd, "in", inm) in represented:
+            continue
+        row = _compose_sdn_row(
+            sr, sl,
+            sdn_cost.get((sd, ic)),
+            source_kinds.get(sd, "OTHER"),
+            contract_map.get(ic),
+            filters,
+        )
         rows.append(row)
         sr += 1
 
@@ -741,6 +773,181 @@ def attach_sdn_columns(row, sdn_map):
     row["site_location"] = ", ".join(locs)
     row["manual_dn_book_ref"] = ", ".join(refs)
     return row
+
+
+def _build_represented_set(rows):
+    """Identity set of lines already produced by the cost-driven paths, so
+    the SDN row source doesn't duplicate them. Two keys per (source doc):
+    'ic' = item_code (reliable for PINV/PO/STE), 'in' = item_name lowered
+    (the only handle on EXP rows, which carry no item_code)."""
+    represented = set()
+    for row in rows:
+        ic = row.get("item_code") or ""
+        inm = (row.get("item_name") or "").strip().lower()
+        for fld in ("pinv", "po", "exp", "ste"):
+            val = row.get(fld) or ""
+            for part in val.split(","):
+                sd = part.strip()
+                if not sd:
+                    continue
+                if ic:
+                    represented.add((sd, "ic", ic))
+                if inm:
+                    represented.add((sd, "in", inm))
+    return represented
+
+
+def _fetch_sdn_delivered_lines(filters):
+    """Every delivered line on a submitted SDN for the project, within the
+    delivery-date window."""
+    return frappe.db.sql("""
+        SELECT
+            sdn.name                      AS sdn_id,
+            sdn.site_location             AS site_location,
+            sdn.custom_manual_dn_book_ref AS dn_book_ref,
+            sdn.delivery_date             AS delivery_date,
+            sdni.source_document          AS source_document,
+            sdni.item_code                AS item_code,
+            sdni.item_name                AS item_name,
+            sdni.scope                    AS scope
+        FROM `tabSite Delivery Note Item` sdni
+        INNER JOIN `tabSite Delivery Note` sdn ON sdn.name = sdni.parent
+        WHERE sdn.docstatus = 1
+          AND sdn.project = %(project)s
+          AND sdn.delivery_date BETWEEN %(from_date)s AND %(to_date)s
+        ORDER BY sdn.delivery_date, sdn.name, sdni.idx
+    """, {
+        "project": filters.project,
+        "from_date": filters.from_date,
+        "to_date": filters.to_date,
+    }, as_dict=True)
+
+
+def _classify_sdn_sources(sdn_lines):
+    """Map each distinct source_document to its doctype kind, so cost lookup
+    and row composition know where to read from. One existence check per
+    distinct document (SDN lines are few)."""
+    kinds = {}
+    for sl in sdn_lines:
+        sd = sl.source_document
+        if not sd or sd in kinds:
+            continue
+        if frappe.db.exists("Purchase Invoice", sd):
+            kinds[sd] = "PINV"
+        elif frappe.db.exists("Expense Claim", sd):
+            kinds[sd] = "EXP"
+        elif frappe.db.exists("Stock Entry", sd):
+            kinds[sd] = "STE"
+        else:
+            kinds[sd] = "OTHER"
+    return kinds
+
+
+def _fetch_sdn_line_costs(sdn_lines, source_kinds):
+    """Best-effort unit cost for SDN-delivered lines, keyed by
+    (source_document, item_code). PINV/STE: exact rate from the source item
+    row. EXP: sanctioned_amount matched on description (fuzzy, EXP detail has
+    no item_code). Missing → absent; the composer leaves cost 0 and flags it."""
+    if not sdn_lines:
+        return {}
+
+    pinv_docs = [sd for sd, k in source_kinds.items() if k == "PINV"]
+    ste_docs = [sd for sd, k in source_kinds.items() if k == "STE"]
+    exp_docs = [sd for sd, k in source_kinds.items() if k == "EXP"]
+
+    out = {}
+
+    if pinv_docs:
+        for r in frappe.db.sql("""
+            SELECT parent AS sd, item_code, rate
+            FROM `tabPurchase Invoice Item`
+            WHERE parent IN %(docs)s
+        """, {"docs": pinv_docs}, as_dict=True):
+            out.setdefault((r.sd, r.item_code), flt(r.rate))
+
+    if ste_docs:
+        for r in frappe.db.sql("""
+            SELECT parent AS sd, item_code, basic_rate AS rate
+            FROM `tabStock Entry Detail`
+            WHERE parent IN %(docs)s
+        """, {"docs": ste_docs}, as_dict=True):
+            out.setdefault((r.sd, r.item_code), flt(r.rate))
+
+    if exp_docs:
+        exp_rows = frappe.db.sql("""
+            SELECT parent AS sd, description, sanctioned_amount AS amount
+            FROM `tabExpense Claim Detail`
+            WHERE parent IN %(docs)s
+        """, {"docs": exp_docs}, as_dict=True)
+        desc_map = {}
+        for r in exp_rows:
+            desc_map.setdefault((r.sd, (r.description or "").strip().lower()), flt(r.amount))
+        for sl in sdn_lines:
+            sd = sl.source_document
+            if source_kinds.get(sd) != "EXP":
+                continue
+            amt = desc_map.get((sd, (sl.item_name or "").strip().lower()))
+            if amt is not None:
+                out[(sd, sl.item_code or "")] = amt
+    return out
+
+
+def _compose_sdn_row(sr, sl, cost, source_kind, contract_price, filters):
+    """Compose a report row from an SDN-delivered line not surfaced elsewhere.
+    Qty is taken as 1 (the SDN is a delivery record, not a costed order) —
+    the accountant sets the billed qty/price on the generated Quotation.
+    SDN ID / Site Location / Manual DN Book Ref are filled by the stamp pass."""
+    cost = flt(cost)
+    sd = sl.source_document or ""
+
+    if source_kind == "EXP":
+        unit_sell_price = cost
+        final_price = cost
+        if cost:
+            comment = "SDN delivery (Expense Claim) — verify price on Quotation"
+        else:
+            comment = "SDN delivery (Expense Claim) — cost not found, set on Quotation"
+        status = "SDN delivery (EXP)"
+    else:
+        unit_sell_price, final_price, comment = _price_against_contract(
+            cost, contract_price, "SDN delivery"
+        )
+        status = "SDN delivery"
+
+    return {
+        "sr_no": sr,
+        "transaction_date": sl.delivery_date,
+        "approved_requisition_no": "",
+        "mreq": "",
+        "mreq_item_name": "",
+        "item_name": sl.item_name or "",
+        "description": sl.item_name or "",
+        "item_code": sl.item_code or "",
+        "qty_ordered": 1,
+        "uom": "",
+        "scope": sl.scope or "",
+        "hq_zone": "",
+        "po": "",
+        "pinv": sd if source_kind == "PINV" else "",
+        "pinv_status": "",
+        "exp": sd if source_kind == "EXP" else "",
+        "exp_status": "",
+        "ste": sd if source_kind == "STE" else "",
+        "prec": "",
+        "dnote": "",
+        "qty_delivered": 1,
+        "balance": 0,
+        "unit_cost": cost,
+        "total_purchase": cost,
+        "supplier": sd,
+        "unit_sell_price": unit_sell_price,
+        "pricing_comment": comment,
+        "final_price": final_price,
+        "status": status,
+        "qtn": "",
+        "project": filters.project,
+        "currency": "TZS",
+    }
 
 
 # ---------------------------------------------------------------------------
