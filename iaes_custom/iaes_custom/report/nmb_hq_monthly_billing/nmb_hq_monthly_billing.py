@@ -113,6 +113,13 @@ def _build_columns():
         {"label": _("STE"), "fieldname": "ste", "fieldtype": "Link", "options": "Stock Entry", "width": 110},
         {"label": _("PREC"), "fieldname": "prec", "fieldtype": "Link", "options": "Purchase Receipt", "width": 110},
         {"label": _("Dnote No."), "fieldname": "dnote", "fieldtype": "Link", "options": "Delivery Note", "width": 110},
+        # --- SDN delivery linkage (added) ---
+        # SDN ID is Data (not Link) because one procurement line can be
+        # delivered across several SDNs, producing a comma-joined value that
+        # a Link field cannot resolve.
+        {"label": _("SDN ID"), "fieldname": "sdn_id", "fieldtype": "Data", "width": 150},
+        {"label": _("Site Location"), "fieldname": "site_location", "fieldtype": "Data", "width": 140},
+        {"label": _("Manual DN Book Ref"), "fieldname": "manual_dn_book_ref", "fieldtype": "Data", "width": 150},
         {"label": _("Qty Delivered"), "fieldname": "qty_delivered", "fieldtype": "Float", "width": 90, "precision": 2},
         {"label": _("Balance"), "fieldname": "balance", "fieldtype": "Float", "width": 80, "precision": 2},
         {"label": _("Unit Cost"), "fieldname": "unit_cost", "fieldtype": "Currency", "options": "currency", "width": 110},
@@ -197,6 +204,15 @@ def _build_data(filters):
         row = _compose_orphan_exp_row(sr, line, filters)
         rows.append(row)
         sr += 1
+
+    # ---- SDN delivery stamps (SDN ID / Site Location / Manual DN Book Ref) ----
+    # Stamp every row (MREQ + orphan) with its Site Delivery Note linkage by
+    # matching the row's source document(s) + item_code against submitted SDNs.
+    # Done as a single pass at the end so the three keys are guaranteed present
+    # on every row regardless of which composer produced it.
+    sdn_map = get_sdn_lookup(filters.project)
+    for row in rows:
+        attach_sdn_columns(row, sdn_map)
 
     return rows
 
@@ -651,6 +667,80 @@ def _fetch_orphan_exp_lines(filters):
         "to_date": filters.to_date,
     }, as_dict=True)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Site Delivery Note (SDN) linkage
+# ---------------------------------------------------------------------------
+def get_sdn_lookup(project):
+    """Map (source_document, item_code) -> aggregated SDN delivery info for the
+    project. A single procurement line can be delivered across several SDNs,
+    so SDN ID / Site Location / Manual DN Book Ref are collected as distinct
+    lists and comma-joined at stamp time.
+
+    Joins on the SDN child table's source_document (the PINV/PO/EXP/STE doc
+    name) plus item_code — the same key the report row already carries in its
+    pinv / po / exp / ste columns. docstatus = 1 is used (not the status field,
+    which can lag on submitted SDNs).
+    """
+    rows = frappe.db.sql("""
+        SELECT
+            sdni.source_document          AS src_doc,
+            sdni.item_code                AS item_code,
+            sdn.name                      AS sdn_id,
+            sdn.site_location             AS site_location,
+            sdn.custom_manual_dn_book_ref AS dn_book_ref
+        FROM `tabSite Delivery Note Item` sdni
+        INNER JOIN `tabSite Delivery Note` sdn ON sdn.name = sdni.parent
+        WHERE sdn.docstatus = 1
+          AND sdn.project = %(project)s
+    """, {"project": project}, as_dict=True)
+
+    out = {}
+    for r in rows:
+        if not r.src_doc or not r.item_code:
+            continue
+        agg = out.setdefault((r.src_doc, r.item_code), {"sdn": [], "loc": [], "ref": []})
+        for col, val in (("sdn", r.sdn_id), ("loc", r.site_location), ("ref", r.dn_book_ref)):
+            if val and val not in agg[col]:
+                agg[col].append(val)
+    return out
+
+
+def attach_sdn_columns(row, sdn_map):
+    """Stamp sdn_id / site_location / manual_dn_book_ref onto a single report
+    row. The row may carry several source documents (comma-joined in
+    pinv / po / exp / ste) and each may have been delivered across several
+    SDNs, so all matches are aggregated. Sets blank strings when there's no
+    match (e.g. EXP rows that carry no item_code, or any future subtotal rows).
+    """
+    item_code = row.get("item_code")
+    sdn_ids, locs, refs = [], [], []
+
+    if item_code:
+        candidates = []
+        for fld in ("pinv", "po", "exp", "ste"):
+            val = row.get(fld) or ""
+            candidates.extend(part.strip() for part in val.split(",") if part.strip())
+
+        for src in candidates:
+            hit = sdn_map.get((src, item_code))
+            if not hit:
+                continue
+            for s in hit["sdn"]:
+                if s not in sdn_ids:
+                    sdn_ids.append(s)
+            for loc in hit["loc"]:
+                if loc not in locs:
+                    locs.append(loc)
+            for ref in hit["ref"]:
+                if ref not in refs:
+                    refs.append(ref)
+
+    row["sdn_id"] = ", ".join(sdn_ids)
+    row["site_location"] = ", ".join(locs)
+    row["manual_dn_book_ref"] = ", ".join(refs)
+    return row
 
 
 # ---------------------------------------------------------------------------
