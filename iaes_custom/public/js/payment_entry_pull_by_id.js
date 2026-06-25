@@ -12,27 +12,44 @@
 //
 // Touches no core method. Additive only -> upgrade safe.
 
-const BUILD = "2026-06-25-v2";
+const BUILD = "2026-06-25-v4";
 
 frappe.ui.form.on("Payment Entry", {
 	refresh(frm) {
 		console.log("[iaes] payment_entry_pull_by_id build", BUILD);
-
-		if (frm.doc.docstatus !== 0) return;
-		const pt = frm.doc.party_type;
-		if (!["Customer", "Supplier", "Employee"].includes(pt)) return;
-
-		const grp = __("Pull by ID");
-
-		if (pt === "Employee") {
-			// Employees: Expense Claims come through the "invoices" path. No orders apply.
-			frm.add_custom_button(__("Expense Claims by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
-		} else {
-			frm.add_custom_button(__("Invoices by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
-			frm.add_custom_button(__("Orders by ID"), () => iaes_prompt_pull(frm, "orders"), grp);
-		}
+		iaes_setup_pull_buttons(frm);
+	},
+	party_type(frm) {
+		// Party Type can change after the form first renders; rebuild so the
+		// dropdown reflects Employee (Expense Claims) vs Customer/Supplier.
+		iaes_setup_pull_buttons(frm);
+	},
+	payment_type(frm) {
+		iaes_setup_pull_buttons(frm);
 	},
 });
+
+function iaes_setup_pull_buttons(frm) {
+	const grp = __("Pull by ID");
+
+	// Always clear our own buttons first so a party-type change rebuilds cleanly
+	// (remove_custom_button is a no-op when the button isn't present).
+	["Invoices by ID", "Orders by ID", "Expense Claims by ID"].forEach((lbl) => {
+		frm.remove_custom_button(__(lbl), grp);
+	});
+
+	if (frm.doc.docstatus !== 0) return;
+	const pt = frm.doc.party_type;
+	if (!["Customer", "Supplier", "Employee"].includes(pt)) return;
+
+	if (pt === "Employee") {
+		// Employees: Expense Claims come through the "invoices" path. No orders apply.
+		frm.add_custom_button(__("Expense Claims by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
+	} else {
+		frm.add_custom_button(__("Invoices by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
+		frm.add_custom_button(__("Orders by ID"), () => iaes_prompt_pull(frm, "orders"), grp);
+	}
+}
 
 function iaes_parse_ids(raw) {
 	// Accept newline, comma, semicolon or whitespace separated. Trim, drop blanks, dedupe.
@@ -48,8 +65,20 @@ function iaes_pull_label(frm, mode) {
 	return pt === "Customer" ? __("Sales Invoice IDs") : __("Purchase Invoice IDs");
 }
 
+function iaes_pull_example(frm, mode) {
+	// A representative document name for the current party type + mode, so the
+	// help text matches the label instead of always showing a Purchase Invoice.
+	const pt = frm.doc.party_type;
+	if (mode === "orders") {
+		return pt === "Customer" ? "SAL-ORD-2026-00123" : "PUR-ORD-2026-00123";
+	}
+	if (pt === "Employee") return "HR-EXP-2026-00123";
+	return pt === "Customer" ? "ACC-SINV-2026-00123" : "ACC-PINV-2026-00123";
+}
+
 function iaes_prompt_pull(frm, mode) {
 	const label = iaes_pull_label(frm, mode);
+	const example = iaes_pull_example(frm, mode);
 
 	frappe.prompt(
 		[
@@ -59,7 +88,8 @@ function iaes_prompt_pull(frm, mode) {
 				label: label,
 				reqd: 1,
 				description: __(
-					"Paste exact document names, one per line or comma-separated (e.g. ACC-PINV-2026-00123). Date range is ignored — all outstanding is searched."
+					"Paste exact document names, one per line or comma-separated (e.g. {0}). Date range is ignored — all outstanding is searched.",
+					[example]
 				),
 			},
 			{
