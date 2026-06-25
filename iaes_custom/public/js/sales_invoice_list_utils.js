@@ -6,7 +6,7 @@
 //   doctype_list_js = {"Sales Invoice": "public/js/sales_invoice_list_utils.js"}
 // (app_include_js also works, but doctype_list_js avoids site-wide loading.)
 
-const BUILD = "2026-06-26-v1";
+const BUILD = "2026-06-26-v2";
 
 frappe.listview_settings = frappe.listview_settings || {};
 frappe.listview_settings["Sales Invoice"] = frappe.listview_settings["Sales Invoice"] || {};
@@ -119,12 +119,18 @@ frappe.listview_settings["Sales Invoice"] = frappe.listview_settings["Sales Invo
 						const od = g.overdue > 0
 							? `<span style="color:#c0392b;font-weight:600">${money(g.overdue)}</span>`
 							: money(g.overdue);
+						const sinv_links = g.sinvs
+							.map((n) => `<a href="/app/sales-invoice/${encodeURIComponent(n)}" target="_blank">${frappe.utils.escape_html(n)}</a>`)
+							.join(", ");
+						const proj_links = [...g.projects]
+							.map((p) => `<a href="/app/project/${encodeURIComponent(p)}" target="_blank">${frappe.utils.escape_html(p)}</a>`)
+							.join(", ") || "—";
 						return `<tr>
 							<td style="text-align:center">${i + 1}</td>
 							<td>${frappe.utils.escape_html(g.customer)}</td>
 							<td style="text-align:center">${g.invoices}</td>
-							<td style="font-size:11px;color:#555">${g.sinvs.join(", ")}</td>
-							<td style="font-size:11px;color:#555">${[...g.projects].join(", ") || "—"}</td>
+							<td style="font-size:11px">${sinv_links}</td>
+							<td style="font-size:11px">${proj_links}</td>
 							<td style="text-align:right">${money(g.grand)}</td>
 							<td style="text-align:right">${money(g.outstanding)}</td>
 							<td style="text-align:right">${od}</td>
