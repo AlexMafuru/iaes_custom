@@ -12,19 +12,25 @@
 //
 // Touches no core method. Additive only -> upgrade safe.
 
-const BUILD = "2026-06-24-v1";
+const BUILD = "2026-06-25-v2";
 
 frappe.ui.form.on("Payment Entry", {
 	refresh(frm) {
 		console.log("[iaes] payment_entry_pull_by_id build", BUILD);
 
 		if (frm.doc.docstatus !== 0) return;
-		if (!["Customer", "Supplier"].includes(frm.doc.party_type)) return;
+		const pt = frm.doc.party_type;
+		if (!["Customer", "Supplier", "Employee"].includes(pt)) return;
 
 		const grp = __("Pull by ID");
 
-		frm.add_custom_button(__("Invoices by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
-		frm.add_custom_button(__("Orders by ID"), () => iaes_prompt_pull(frm, "orders"), grp);
+		if (pt === "Employee") {
+			// Employees: Expense Claims come through the "invoices" path. No orders apply.
+			frm.add_custom_button(__("Expense Claims by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
+		} else {
+			frm.add_custom_button(__("Invoices by ID"), () => iaes_prompt_pull(frm, "invoices"), grp);
+			frm.add_custom_button(__("Orders by ID"), () => iaes_prompt_pull(frm, "orders"), grp);
+		}
 	},
 });
 
@@ -33,8 +39,17 @@ function iaes_parse_ids(raw) {
 	return [...new Set((raw || "").split(/[\n,;\s]+/).map((s) => s.trim()).filter(Boolean))];
 }
 
+function iaes_pull_label(frm, mode) {
+	const pt = frm.doc.party_type;
+	if (mode === "orders") {
+		return pt === "Customer" ? __("Sales Order IDs") : __("Purchase Order IDs");
+	}
+	if (pt === "Employee") return __("Expense Claim IDs");
+	return pt === "Customer" ? __("Sales Invoice IDs") : __("Purchase Invoice IDs");
+}
+
 function iaes_prompt_pull(frm, mode) {
-	const label = mode === "orders" ? __("Purchase / Sales Order IDs") : __("Purchase / Sales Invoice IDs");
+	const label = iaes_pull_label(frm, mode);
 
 	frappe.prompt(
 		[
