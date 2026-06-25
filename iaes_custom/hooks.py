@@ -258,3 +258,12 @@ app_include_js = [
     "/assets/iaes_custom/js/filter_v5.js",
     "/assets/iaes_custom/js/listview_calculator.js",
 ]
+
+app_include_js = [
+    "/assets/iaes_custom/js/filter_v5.js",
+    "/assets/iaes_custom/js/listview_calculator.js",
+]
+
+doctype_js = {
+    "Payment Entry": "public/js/payment_entry_pull_by_id.js",
+}
