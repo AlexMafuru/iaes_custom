@@ -259,19 +259,34 @@ def _build_data(filters):
 # Source fetchers — each returns a dict keyed by Material Request Item.name
 # ---------------------------------------------------------------------------
 def _fetch_mreq_lines(filters):
-    """All MREQ Item rows belonging to a Material Request that has at least
-    one line tagged for the filter project, within the date window.
+    """All MREQ Item rows for a Material Request that belongs to the filter
+    project, whether the project is recorded on the header, on the lines, or
+    both — within the date window.
 
-    Note on project matching: standard ERPNext doesn't auto-cascade the
-    project field from one MREQ Item line to its siblings. In practice
-    teams tend to tag project on only one line per MR (often the first).
-    Filtering strictly on `mri.project = X` would miss the untagged
-    sibling lines even though the MR as a whole is for that project.
+    Why both:
+    Project on the Material Request is a custom header field (mr.custom_project),
+    NOT the standard accounting dimension. Because it is custom, ERPNext's
+    native parent->child cascade never fires, so mr.custom_project does not
+    propagate to the line-level `project` column. In practice this leaves three
+    populations:
+        1. Lines tagged, header tagged    -> both set
+        2. Lines tagged, header blank      -> some teams tag only one line
+        3. Header tagged, lines all blank  -> the common case; no line ever
+                                              matched, so a line-only filter
+                                              dropped the whole MR (e.g. MREQ-01493)
 
-    Matching against `parent IN (subquery)` mirrors the Material Request
-    list-view's behaviour: an MR appears for project X if any of its
-    lines points to X, and all of its lines are then included in the
-    report.
+    Qualification (WHERE): an MR is in-scope if the header carries the project
+    OR any of its lines does. Once qualified, ALL of its lines are returned
+    (mirroring the Material Request list-view and the existing sibling-inclusion
+    behaviour), so partial line tagging never loses rows.
+
+    Value (SELECT): each row's effective project is
+        COALESCE(mri.project, mr.custom_project)
+    so header-only MRs still expose the correct per-row project to the report
+    and the Generate Quotation step, with no data migration required. This is
+    self-healing for any future header-only MR.
+
+    Header-OR matching mirrors _fetch_orphan_pinv_lines / _fetch_orphan_ste_lines.
     """
     extra_conditions = ""
     if filters.get("scope"):
@@ -293,15 +308,18 @@ def _fetch_mreq_lines(filters):
             mri.rate                              AS mreq_rate,
             mri.custom_scope                      AS scope,
             mr.custom_hq_or_zone                  AS hq_zone,
-            mri.project                           AS project,
+            COALESCE(mri.project, mr.custom_project) AS project,
             mri.custom_quoted_in_quotation              AS qtn
         FROM `tabMaterial Request` mr
         INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
         WHERE mr.docstatus = 1
-          AND mri.parent IN (
-              SELECT DISTINCT parent
-              FROM `tabMaterial Request Item`
-              WHERE project = %(project)s
+          AND (
+              mr.custom_project = %(project)s
+              OR mri.parent IN (
+                  SELECT DISTINCT parent
+                  FROM `tabMaterial Request Item`
+                  WHERE project = %(project)s
+              )
           )
           AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
           {extra_conditions}
