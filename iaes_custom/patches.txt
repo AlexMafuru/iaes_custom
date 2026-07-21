@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 iaes_custom.patches.v0_0_2.fix_approved_requisition_field
 iaes_custom.patches.v0_0_3.add_field_technician
+iaes_custom.patches.v0_0_4.expense_claim_field_technician
