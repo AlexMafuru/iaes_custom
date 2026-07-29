@@ -13,8 +13,14 @@ frappe.provide("iaes");
 
 iaes.list_calculator = (function () {
 
-    const BUILD = "2026-06-11-v9";
+    const BUILD = "2026-07-29-v11";
     console.log("[IAES list calculator] build", BUILD, "loaded");
+
+    // Max ROWS fetched per calculation. Note: when a filter targets a child
+    // table (e.g. Purchase Order in Purchase Invoice Item) the server returns
+    // one ROW PER MATCHING CHILD LINE, so raw rows can far exceed the number
+    // of documents. Raised from 5000 to absorb that fan-out.
+    const MAX_ROWS = 20000;
 
     // Remembers where the user dragged the panel (viewport px). Null = default corner.
     let last_pos = null;
@@ -80,6 +86,11 @@ iaes.list_calculator = (function () {
     // Add  use_base: true  to a doctype entry to total in COMPANY currency
     // (uses base_net_total, base_grand_total, etc.) — useful for lists that
     // mix foreign-currency documents. Default totals in document currency.
+    //
+    // Add  no_base: true  to an individual ROW to exempt it from use_base.
+    // Needed when a field has no base_* twin in the doctype — e.g. Payment
+    // Entry has base_paid_amount but NO base_unallocated_amount, and asking
+    // the server for a column that doesn't exist fails the whole call.
     // -------------------------------------------------------------------
     const CALC_CONFIG = {
         "Quotation": {
@@ -109,6 +120,21 @@ iaes.list_calculator = (function () {
             rows: [
                 { label: "Net Total",   field: "net_total" },
                 { label: "Grand Total", field: "grand_total" }
+            ]
+        },
+        "Payment Entry": {
+            title: "Payment Entry Totals",
+            use_base: true,   // PEs routinely mix currencies — total in company currency
+            rows: [
+                { label: "Paid",        field: "paid_amount" },
+                { label: "Received",    field: "received_amount" },
+                { label: "Allocated",   field: "total_allocated_amount", color: "green" },
+                // Payment Entry has NO base_unallocated_amount field, so this row
+                // opts out of use_base and sums the DOCUMENT-currency figure.
+                // If you run multi-currency payments and want this in company
+                // currency instead, swap the line below for the diff variant:
+                //   { label: "Unallocated", diff: ["paid_amount", "total_allocated_amount"], color: "red" }
+                { label: "Unallocated", field: "unallocated_amount", no_base: true, color: "red" }
             ]
         },
         "Expense Claim": {
@@ -202,18 +228,22 @@ iaes.list_calculator = (function () {
         const { lv, doctype, cfg } = ctx;
         const currency = frappe.defaults.get_global_default('currency');
 
-        // When use_base is set, total the company-currency fields (base_net_total, base_grand_total, ...)
-        const resolve = f => cfg.use_base ? ("base_" + f) : f;
+        // When use_base is set, total the company-currency fields (base_net_total, base_grand_total, ...).
+        // A row carrying  no_base: true  is exempt — see the CONFIG notes above.
+        const resolve = (f, row) => (cfg.use_base && !(row && row.no_base)) ? ("base_" + f) : f;
 
         // Gather every docfield needed: normal rows (.field) and computed rows (.diff = [a, b]).
         const field_names = [];
         cfg.rows.forEach(r => {
-            if (r.field) field_names.push(r.field);
-            if (r.diff) { field_names.push(r.diff[0], r.diff[1]); }
+            if (r.field) field_names.push(resolve(r.field, r));
+            if (r.diff) { field_names.push(resolve(r.diff[0], r), resolve(r.diff[1], r)); }
         });
         const af = avg_field(cfg);
-        if (af) field_names.push(af);
-        const fields = [...new Set(field_names.map(resolve))];
+        const af_row = af ? cfg.rows.find(r => r.field === af) : null;
+        if (af) field_names.push(resolve(af, af_row));
+        // "name" is REQUIRED so duplicate rows from child-table joins can be
+        // collapsed before summing. Do not remove it.
+        const fields = [...new Set(["name", ...field_names])];
 
         const base_filters = lv.filter_area.get() || [];
         const checked = (lv.get_checked_items ? lv.get_checked_items(true) : []) || [];
@@ -226,17 +256,32 @@ iaes.list_calculator = (function () {
 
         frappe.call({
             method: "frappe.client.get_list",
-            args: { doctype: doctype, fields: fields, filters: filters, limit_page_length: 5000 },
+            args: { doctype: doctype, fields: fields, filters: filters, limit_page_length: MAX_ROWS },
             error: function () {
                 $('#iaes-calc-count').text(__("Calculation failed — try Refresh."));
                 frappe.show_alert({ message: __("Could not calculate totals"), indicator: "red" }, 5);
             },
             callback: function (r) {
-                const data = r.message || [];
+                const raw = r.message || [];
 
-                if (data.length >= 5000) {
+                // --- DEDUPE -------------------------------------------------
+                // When a filter targets a child table, the server JOINs the
+                // child table and returns the SAME parent document once per
+                // matching child row. Summing raw rows counts that document's
+                // grand_total N times and reports N as the document count.
+                // The list view itself applies DISTINCT, which is why the
+                // header said "23 of 23" while this panel said "154".
+                // Collapse on `name` so every document is counted exactly once.
+                const seen = new Set();
+                const data = raw.filter(d => {
+                    if (!d.name || seen.has(d.name)) return false;
+                    seen.add(d.name);
+                    return true;
+                });
+
+                if (raw.length >= MAX_ROWS) {
                     frappe.show_alert({
-                        message: __("Showing first 5000 records only — totals may be incomplete"),
+                        message: __("Row limit of {0} reached — totals may be incomplete. Narrow the filter.", [MAX_ROWS]),
                         indicator: "orange"
                     }, 6);
                 }
@@ -255,14 +300,14 @@ iaes.list_calculator = (function () {
                 cfg.rows.forEach((row, i) => {
                     let val;
                     if (row.diff) {
-                        val = sums[resolve(row.diff[0])] - sums[resolve(row.diff[1])];
+                        val = sums[resolve(row.diff[0], row)] - sums[resolve(row.diff[1], row)];
                     } else {
-                        val = sums[resolve(row.field)];
+                        val = sums[resolve(row.field, row)];
                     }
                     $(`#iaes-calc-val-${i}`).text(format_currency(val, currency)).attr('data-raw', val);
                 });
 
-                const avg = (af && data.length) ? sums[resolve(af)] / data.length : 0;
+                const avg = (af && data.length) ? sums[resolve(af, af_row)] / data.length : 0;
                 $('#iaes-calc-avg').text(format_currency(avg, currency));
             }
         });
