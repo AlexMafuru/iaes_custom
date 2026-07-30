@@ -263,6 +263,3 @@ doctype_js = {
     "Payment Entry": "public/js/payment_entry_pull_by_id.js",
 }
 
-doctype_list_js = {
-    "Sales Invoice": "public/js/sales_invoice_list_utils.js",
-}
