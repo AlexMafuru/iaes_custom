@@ -44,6 +44,18 @@
 //    outstanding_amount has no base_ twin, so it is converted with
 //    conversion_rate. The company currency is read from system defaults, never
 //    hardcoded.
+//
+// 4. LISTVIEW_SETTINGS IS LAST-WRITER-WINS. frappe.listview_settings is a single
+//    shared object. HRMS (expense_claim_list.js) and ERPNext (*_list.js) assign
+//    their entry WHOLESALE, and those bundles load AFTER app_include_js -- so a
+//    merge performed here is silently discarded before the list ever renders.
+//    Registration therefore uses TWO paths (see WIRING at the bottom):
+//      PATH 1  merge into frappe.listview_settings.onload   -- works when nobody
+//              overwrites the slot afterwards
+//      PATH 2  attach directly to the live ListView on route change -- immune to
+//              any app clobbering listview_settings
+//    Both funnel through add_buttons(), whose __iaes_utils_wired flag makes
+//    double-wiring impossible.
 // =============================================================================
 
 frappe.provide("iaes");
@@ -52,7 +64,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-07-30-v1";
+    const BUILD = "2026-08-01-v2";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -851,6 +863,9 @@ iaes.listview_utils = (function () {
 
     // =========================================================================
     // WIRING
+    // -------------------------------------------------------------------------
+    // See CORRECTNESS NOTE 4. Two independent registration paths, one shared
+    // idempotency flag. Whichever fires first wins; the other becomes a no-op.
     // =========================================================================
 
     function current_listview(doctype) {
@@ -858,47 +873,94 @@ iaes.listview_utils = (function () {
             ? cur_list : null;
     }
 
-    Object.keys(CONFIG).forEach(function (doctype) {
+    // Attach the two inner buttons to a live ListView.
+    // Returns true if the listview is now wired (or already was), false if the
+    // listview is not ready yet and the caller should retry.
+    function add_buttons(listview, doctype) {
         const cfg = CONFIG[doctype];
+        if (!cfg) return true;                          // nothing to do for this doctype
+        if (!listview || !listview.page) return false;  // not ready yet
+        if (listview.__iaes_utils_wired) return true;   // already wired
+        listview.__iaes_utils_wired = true;
 
-        // MERGE, never assign. ERPNext ships its own *_list.js with add_fields
-        // and get_indicator; a bare assignment to frappe.listview_settings
-        // silently discards them (that was a real bug in CustomScript0004).
+        listview.page.add_inner_button(__(cfg.summary_button), function () {
+            show_summary(current_listview(doctype) || listview, cfg, doctype);
+        });
+        listview.page.add_inner_button(__(cfg.totals_button), function () {
+            const $p = $("#" + PANEL_ID);
+            if ($p.length && $p.is(":visible")) { $p.remove(); return; }
+            show_totals(current_listview(doctype) || listview, cfg, doctype);
+        });
+        return true;
+    }
+
+    // ---- PATH 1: frappe.listview_settings.onload ----------------------------
+    // MERGE, never assign. ERPNext ships its own *_list.js with add_fields and
+    // get_indicator; a bare assignment discards them (that was a real bug in
+    // CustomScript0004). Note this merge only survives if no app assigns the
+    // slot afterwards -- HRMS does exactly that for Expense Claim, which is why
+    // PATH 2 exists.
+    Object.keys(CONFIG).forEach(function (doctype) {
         frappe.listview_settings = frappe.listview_settings || {};
         const settings = frappe.listview_settings[doctype] || {};
         const prev_onload = settings.onload;
 
         settings.onload = function (listview) {
-            if (prev_onload) prev_onload(listview);
-
-            if (listview.__iaes_utils_wired) return;   // onload can fire twice
-            listview.__iaes_utils_wired = true;
-
-            listview.page.add_inner_button(__(cfg.summary_button), function () {
-                show_summary(current_listview(doctype) || listview, cfg, doctype);
-            });
-            listview.page.add_inner_button(__(cfg.totals_button), function () {
-                const $p = $("#" + PANEL_ID);
-                if ($p.length && $p.is(":visible")) { $p.remove(); return; }
-                show_totals(current_listview(doctype) || listview, cfg, doctype);
-            });
+            // A foreign onload must never be able to take our buttons down
+            // with it, so it runs inside its own guard.
+            if (prev_onload) {
+                try {
+                    prev_onload(listview);
+                } catch (e) {
+                    console.error("[IAES listview utils] foreign onload failed for", doctype, e);
+                }
+            }
+            add_buttons(listview, doctype);
         };
 
         frappe.listview_settings[doctype] = settings;
     });
 
-    // Hide a stale panel when leaving the list view it belongs to.
+    // ---- PATH 2: direct wiring off the live ListView ------------------------
+    // Immune to listview_settings being reassigned by any other app. Polls
+    // briefly because the ListView instance is created asynchronously after the
+    // route changes.
+    function wire_route(tries) {
+        const route = frappe.get_route() || [];
+        if (route[0] !== "List") return;
+
+        const doctype = route[1];
+        if (!CONFIG[doctype]) return;
+        if (add_buttons(current_listview(doctype), doctype)) return;
+
+        if ((tries || 0) < 40) {   // ~6s ceiling, then give up quietly
+            setTimeout(function () { wire_route((tries || 0) + 1); }, 150);
+        }
+    }
+
+    // Hide a stale panel when leaving the list view it belongs to,
+    // and wire the buttons when entering a configured one.
     frappe.router.on("change", function () {
         const route = frappe.get_route() || [];
         if (route[0] !== "List" || !CONFIG[route[1]]) $("#" + PANEL_ID).remove();
+        wire_route(0);
     });
+
+    // First page load: the router "change" event may already have fired by the
+    // time this file executes, so cover the initial route explicitly.
+    if (frappe.after_ajax) {
+        frappe.after_ajax(function () { wire_route(0); });
+    } else {
+        $(document).ready(function () { wire_route(0); });
+    }
 
     return {
         CONFIG: CONFIG,
         show_summary: show_summary,
         show_totals: show_totals,
         _internals: { dedupe: dedupe, make_predicate: make_predicate, aggregate: aggregate,
-                      group_by_party: group_by_party, visible_metrics: visible_metrics },
+                      group_by_party: group_by_party, visible_metrics: visible_metrics,
+                      add_buttons: add_buttons, wire_route: wire_route },
     };
 
 })();
