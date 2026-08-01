@@ -256,7 +256,7 @@ fixtures = [
 
 app_include_js = [
     "/assets/iaes_custom/js/filter_v5.js",
-    "/assets/iaes_custom/js/listview_calculator.js",
+    "/assets/iaes_custom/js/iaes_listview_utils.js",
 ]
 
 doctype_js = {
