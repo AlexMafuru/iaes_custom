@@ -80,7 +80,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-02-v4";
+    const BUILD = "2026-08-02-v5";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -483,7 +483,8 @@ iaes.listview_utils = (function () {
             if (!map[key]) {
                 map[key] = {
                     party: r[cfg.party.name_field] || r[cfg.party.field] || "(blank)",
-                    count: 0, docs: [], projects: new Set(), overdue: 0, sums: {},
+                    count: 0, docs: [], projects: new Set(), currencies: new Set(),
+                    overdue: 0, sums: {},
                 };
                 cfg.metrics.forEach(function (m) { map[key].sums[m.key] = 0; });
             }
@@ -491,6 +492,7 @@ iaes.listview_utils = (function () {
             g.count += 1;
             g.docs.push(r.name);
             if (r.project) g.projects.add(r.project);
+            if (r.currency) g.currencies.add(r.currency);
             cfg.metrics.forEach(function (m) {
                 if (m.get) g.sums[m.key] += flt(m.get(r));
             });
@@ -503,6 +505,7 @@ iaes.listview_utils = (function () {
                 if (m.calc) g.sums[m.key] = flt(m.calc(g.sums));
             });
             g.projects = Array.from(g.projects);
+            g.currencies = Array.from(g.currencies).sort();
             return g;
         });
     }
@@ -526,16 +529,29 @@ iaes.listview_utils = (function () {
             // ---- column model -------------------------------------------------
             // Project(s) only exists where the doctype actually has the field --
             // see CORRECTNESS NOTE 5 (Quotation does not).
-            const has_project = (res.fields || []).indexOf("project") !== -1;
+            const has_project  = (res.fields || []).indexOf("project")  !== -1;
+            const has_currency = (res.fields || []).indexOf("currency") !== -1;
 
             const cols = [
                 { label: "#", type: "none", align: "center", width: "36px" },
                 { label: cfg.party.label, type: "text", get: function (g) { return g.party; } },
-                { label: "Docs", type: "num", align: "center", sort: "count",
-                  get: function (g) { return g.count; } },
-                { label: cfg.abbr + "(s)", type: "text",
-                  get: function (g) { return g.docs.join(" "); } },
             ];
+
+            // Document currency, between the party and the doc count. A party can
+            // hold docs in several currencies, so this is the distinct set, not a
+            // single value -- and it is a reminder that the money columns beside
+            // it are converted to company currency, not raw document amounts.
+            if (has_currency) {
+                cols.push({
+                    label: "Currency", type: "text", align: "center", width: "82px",
+                    get: function (g) { return g.currencies.join(", "); },
+                });
+            }
+
+            cols.push({ label: "Docs", type: "num", align: "center", sort: "count",
+                        get: function (g) { return g.count; } });
+            cols.push({ label: cfg.abbr + "(s)", type: "text",
+                        get: function (g) { return g.docs.join(" "); } });
 
             if (has_project) {
                 cols.push({ label: "Project(s)", type: "text",
@@ -604,6 +620,11 @@ iaes.listview_utils = (function () {
                         return '<a href="/app/' + cfg.route + "/" + encodeURIComponent(n) +
                                '" target="_blank">' + esc(n) + "</a>";
                     }).join(", ");
+                }
+                if (c.label === "Currency") {
+                    return g.currencies.length
+                        ? g.currencies.map(function (x) { return esc(x); }).join(", ")
+                        : '<span class="text-muted">—</span>';
                 }
                 if (c.label === "Project(s)") {
                     return g.projects.length
