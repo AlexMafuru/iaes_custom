@@ -41,8 +41,16 @@
 //    base_rounded_total || base_grand_total -- the same base ERPNext used.
 //
 // 3. CURRENCY. Everything totals in COMPANY currency via base_* fields.
-//    outstanding_amount has no base_ twin, so it is converted with
-//    conversion_rate. The company currency is read from system defaults, never
+//    outstanding_amount has no base_ twin, and it is denominated in the PARTY
+//    ACCOUNT currency (fieldtype Currency, options "party_account_currency") --
+//    NOT the document currency. Those differ constantly: a EUR invoice booked
+//    against a TZS creditors account stores outstanding_amount in TZS already.
+//    Blindly multiplying by conversion_rate inflated a real PINV of EUR
+//    29,187.90 from 91,734,650.91 TZS to 288,313,822,127.08 -- a 3,142x error,
+//    exactly the EUR->TZS rate. So: convert ONLY when party_account_currency is
+//    present AND differs from company currency; otherwise the figure is already
+//    in company currency. When the field is absent, DO NOT convert -- that is
+//    the safe default. The company currency is read from system defaults, never
 //    hardcoded.
 //
 // 4. LISTVIEW_SETTINGS IS LAST-WRITER-WINS. frappe.listview_settings is a single
@@ -72,7 +80,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-01-v3";
+    const BUILD = "2026-08-02-v4";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -102,9 +110,20 @@ iaes.listview_utils = (function () {
         return flt(r.conversion_rate) || 1;
     }
 
-    // outstanding_amount is stored in DOCUMENT currency and has no base_ twin.
+    // outstanding_amount is denominated in PARTY ACCOUNT currency, which is NOT
+    // necessarily the document currency -- see CORRECTNESS NOTE 3. Convert only
+    // when the party account is genuinely foreign.
     function base_outstanding(r) {
-        return flt(r.outstanding_amount) * rate(r);
+        const o = flt(r.outstanding_amount);
+        if (!o) return 0;
+
+        const pac = r.party_account_currency;
+        // No party_account_currency fetched (or the doctype has none) => the
+        // figure is already in company currency. Converting would be the bug
+        // this function exists to prevent, so the safe default is NOT to.
+        if (!pac || pac === company_currency()) return o;
+
+        return o * rate(r);
     }
 
     // The figure ERPNext actually settled against -- see CORRECTNESS NOTE 2.
@@ -282,7 +301,8 @@ iaes.listview_utils = (function () {
             party: { field: "customer", name_field: "customer_name", label: "Customer" },
             summary_button: "Customer Summary", totals_button: "Sales Totals",
             fields: ["customer", "customer_name", "status", "project",
-                     "posting_date", "due_date", "outstanding_amount"].concat(MONEY_TXN),
+                     "posting_date", "due_date", "outstanding_amount",
+                     "party_account_currency"].concat(MONEY_TXN),
             metrics: payable_metrics(),
             summary: ["grand", "due"],
             ageing: true, ageing_label: "RECEIVABLES AGEING (outstanding)",
@@ -302,7 +322,8 @@ iaes.listview_utils = (function () {
             party: { field: "supplier", name_field: "supplier_name", label: "Supplier" },
             summary_button: "Supplier Summary", totals_button: "Purchase Totals",
             fields: ["supplier", "supplier_name", "status", "project",
-                     "posting_date", "due_date", "outstanding_amount"].concat(MONEY_TXN),
+                     "posting_date", "due_date", "outstanding_amount",
+                     "party_account_currency"].concat(MONEY_TXN),
             metrics: payable_metrics(),
             summary: ["grand", "due"],
             ageing: true, ageing_label: "PAYABLES AGEING (outstanding)",
