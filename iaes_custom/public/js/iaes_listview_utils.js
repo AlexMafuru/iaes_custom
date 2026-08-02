@@ -80,7 +80,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-02-v5";
+    const BUILD = "2026-08-02-v6";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -374,6 +374,63 @@ iaes.listview_utils = (function () {
     // DATA ACCESS
     // =========================================================================
 
+    // -------------------------------------------------------------------------
+    // PROJECT -> CUSTOMER
+    // The invoice knows its Project; the end customer lives on Project.customer.
+    // Resolved in one batched query per unseen project and cached for the whole
+    // session, so reopening the dialog costs nothing. Projects that come back
+    // empty (deleted, or no read permission) are cached as "" so they are not
+    // re-queried on every open.
+    // -------------------------------------------------------------------------
+    const PROJECT_CUSTOMER = {};
+
+    function load_project_customers(projects) {
+        const missing = (projects || []).filter(function (p) {
+            return p && !Object.prototype.hasOwnProperty.call(PROJECT_CUSTOMER, p);
+        });
+        if (!missing.length) return Promise.resolve(PROJECT_CUSTOMER);
+
+        const CHUNK = 300;
+        const batches = [];
+        for (let i = 0; i < missing.length; i += CHUNK) {
+            batches.push(missing.slice(i, i + CHUNK));
+        }
+
+        return Promise.all(batches.map(function (batch) {
+            return new Promise(function (resolve) {
+                const seal = function () {
+                    batch.forEach(function (p) {
+                        if (!Object.prototype.hasOwnProperty.call(PROJECT_CUSTOMER, p)) {
+                            PROJECT_CUSTOMER[p] = "";
+                        }
+                    });
+                    resolve();
+                };
+                frappe.call({
+                    method: "frappe.client.get_list",
+                    args: {
+                        doctype: "Project",
+                        fields: ["name", "customer"],
+                        filters: [["Project", "name", "in", batch]],
+                        limit_page_length: batch.length,
+                    },
+                    callback: function (r) {
+                        (r.message || []).forEach(function (p) {
+                            PROJECT_CUSTOMER[p.name] = p.customer || "";
+                        });
+                        seal();
+                    },
+                    error: function (e) {
+                        // No read access to Project is not fatal -- the column
+                        // just stays blank.
+                        console.warn("[IAES listview utils] could not read Project customers", e);
+                        seal();
+                    },
+                });
+            });
+        })).then(function () { return PROJECT_CUSTOMER; });
+    }
+
     function current_filters(listview) {
         if (listview.get_filters_for_args) return listview.get_filters_for_args() || [];
         return (listview.filter_area && listview.filter_area.get()) || [];
@@ -429,12 +486,22 @@ iaes.listview_utils = (function () {
                         }, 6);
                     }
                     const rows = dedupe(raw);   // CORRECTNESS NOTE 1
-                    resolve({
-                        rows: rows,
-                        scoped: checked.length > 0,
-                        truncated: raw.length >= MAX_ROWS,
-                        currencies: Array.from(new Set(rows.map(function (d) { return d.currency; }).filter(Boolean))),
-                        fields: fields,
+
+                    // The end customer lives on Project, not on the invoice, so
+                    // it needs a second (cached) round trip before rendering.
+                    const projects = Array.from(new Set(
+                        rows.map(function (d) { return d.project; }).filter(Boolean)
+                    ));
+
+                    load_project_customers(projects).then(function (pmap) {
+                        resolve({
+                            rows: rows,
+                            scoped: checked.length > 0,
+                            truncated: raw.length >= MAX_ROWS,
+                            currencies: Array.from(new Set(rows.map(function (d) { return d.currency; }).filter(Boolean))),
+                            fields: fields,
+                            project_customers: pmap,
+                        });
                     });
                 },
                 error: function (err) {
@@ -476,7 +543,8 @@ iaes.listview_utils = (function () {
         return out;
     }
 
-    function group_by_party(rows, cfg) {
+    function group_by_party(rows, cfg, pmap) {
+        pmap = pmap || {};
         const map = {};
         rows.forEach(function (r) {
             const key = r[cfg.party.field] || r[cfg.party.name_field] || "(blank)";
@@ -484,14 +552,17 @@ iaes.listview_utils = (function () {
                 map[key] = {
                     party: r[cfg.party.name_field] || r[cfg.party.field] || "(blank)",
                     count: 0, docs: [], projects: new Set(), currencies: new Set(),
-                    overdue: 0, sums: {},
+                    project_customers: new Set(), overdue: 0, sums: {},
                 };
                 cfg.metrics.forEach(function (m) { map[key].sums[m.key] = 0; });
             }
             const g = map[key];
             g.count += 1;
             g.docs.push(r.name);
-            if (r.project) g.projects.add(r.project);
+            if (r.project) {
+                g.projects.add(r.project);
+                if (pmap[r.project]) g.project_customers.add(pmap[r.project]);
+            }
             if (r.currency) g.currencies.add(r.currency);
             cfg.metrics.forEach(function (m) {
                 if (m.get) g.sums[m.key] += flt(m.get(r));
@@ -506,6 +577,7 @@ iaes.listview_utils = (function () {
             });
             g.projects = Array.from(g.projects);
             g.currencies = Array.from(g.currencies).sort();
+            g.project_customers = Array.from(g.project_customers).sort();
             return g;
         });
     }
@@ -521,7 +593,7 @@ iaes.listview_utils = (function () {
                 return;
             }
 
-            const groups = group_by_party(res.rows, cfg);
+            const groups = group_by_party(res.rows, cfg, res.project_customers || {});
             const money_keys = cfg.summary || [];
             const metric_by_key = {};
             cfg.metrics.forEach(function (m) { metric_by_key[m.key] = m; });
@@ -556,6 +628,12 @@ iaes.listview_utils = (function () {
             if (has_project) {
                 cols.push({ label: "Project(s)", type: "text",
                             get: function (g) { return g.projects.join(" "); } });
+
+                // End customer, resolved from Project.customer. This is the
+                // column to type into when you want "everything we billed for
+                // customer X", which the invoice itself cannot answer.
+                cols.push({ label: "Project Customer(s)", type: "text",
+                            get: function (g) { return g.project_customers.join(" "); } });
             }
 
             money_keys.forEach(function (k) {
@@ -624,6 +702,14 @@ iaes.listview_utils = (function () {
                 if (c.label === "Currency") {
                     return g.currencies.length
                         ? g.currencies.map(function (x) { return esc(x); }).join(", ")
+                        : '<span class="text-muted">—</span>';
+                }
+                if (c.label === "Project Customer(s)") {
+                    return g.project_customers.length
+                        ? g.project_customers.map(function (cu) {
+                              return '<a href="/app/customer/' + encodeURIComponent(cu) +
+                                     '" target="_blank">' + esc(cu) + "</a>";
+                          }).join(", ")
                         : '<span class="text-muted">—</span>';
                 }
                 if (c.label === "Project(s)") {
