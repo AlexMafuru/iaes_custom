@@ -56,6 +56,14 @@
 //              any app clobbering listview_settings
 //    Both funnel through add_buttons(), whose __iaes_utils_wired flag makes
 //    double-wiring impossible.
+//
+// 5. NOT EVERY DOCTYPE HAS EVERY FIELD. Quotation has no `project` docfield, and
+//    frappe.client.get_list rejects the WHOLE request with
+//        "Field not permitted in query: project"
+//    rather than ignoring the unknown column -- so one absent field kills the
+//    entire feature for that doctype. fetch_rows() therefore filters the
+//    requested field list against frappe.get_meta() before calling, and the
+//    Summary dialog drops the Project(s) column when the field was not fetched.
 // =============================================================================
 
 frappe.provide("iaes");
@@ -64,7 +72,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-01-v2";
+    const BUILD = "2026-08-01-v3";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -350,7 +358,29 @@ iaes.listview_utils = (function () {
         return (listview.filter_area && listview.filter_area.get()) || [];
     }
 
-    // Resolves to { rows, scoped, truncated, currencies }.
+    // Drop any field the doctype does not actually have -- see CORRECTNESS NOTE 5.
+    // Falls back to the full list if meta is unavailable, so a missing meta can
+    // never make things worse than not filtering at all.
+    const STANDARD_FIELDS = new Set([
+        "name", "owner", "creation", "modified", "modified_by", "docstatus", "idx",
+    ]);
+
+    function valid_fields(doctype, fields) {
+        let meta = null;
+        try { meta = frappe.get_meta(doctype); } catch (e) { meta = null; }
+        if (!meta || !meta.fields || !meta.fields.length) return fields;
+
+        const have = new Set(meta.fields.map(function (f) { return f.fieldname; }));
+        const kept = fields.filter(function (f) { return STANDARD_FIELDS.has(f) || have.has(f); });
+        const dropped = fields.filter(function (f) { return kept.indexOf(f) === -1; });
+        if (dropped.length) {
+            console.warn("[IAES listview utils]", doctype, "has no field(s):", dropped.join(", "),
+                         "— excluded from the query.");
+        }
+        return kept;
+    }
+
+    // Resolves to { rows, scoped, truncated, currencies, fields }.
     // `scoped` means the user had rows ticked, so only those were totalled.
     function fetch_rows(listview, cfg, doctype) {
         const checked = (listview.get_checked_items ? listview.get_checked_items(true) : []) || [];
@@ -358,7 +388,7 @@ iaes.listview_utils = (function () {
             ? [[doctype, "name", "in", checked]]
             : current_filters(listview);
 
-        const fields = Array.from(new Set(["name"].concat(cfg.fields)));
+        const fields = valid_fields(doctype, Array.from(new Set(["name"].concat(cfg.fields))));
 
         return new Promise(function (resolve, reject) {
             frappe.call({
@@ -383,9 +413,15 @@ iaes.listview_utils = (function () {
                         scoped: checked.length > 0,
                         truncated: raw.length >= MAX_ROWS,
                         currencies: Array.from(new Set(rows.map(function (d) { return d.currency; }).filter(Boolean))),
+                        fields: fields,
                     });
                 },
-                error: reject,
+                error: function (err) {
+                    // get_list rejects the whole request on one bad column, so
+                    // say which doctype died instead of failing silently.
+                    console.error("[IAES listview utils] fetch failed for", doctype, "fields:", fields, err);
+                    reject(err);
+                },
             });
         });
     }
@@ -467,6 +503,10 @@ iaes.listview_utils = (function () {
             cfg.metrics.forEach(function (m) { metric_by_key[m.key] = m; });
 
             // ---- column model -------------------------------------------------
+            // Project(s) only exists where the doctype actually has the field --
+            // see CORRECTNESS NOTE 5 (Quotation does not).
+            const has_project = (res.fields || []).indexOf("project") !== -1;
+
             const cols = [
                 { label: "#", type: "none", align: "center", width: "36px" },
                 { label: cfg.party.label, type: "text", get: function (g) { return g.party; } },
@@ -474,9 +514,12 @@ iaes.listview_utils = (function () {
                   get: function (g) { return g.count; } },
                 { label: cfg.abbr + "(s)", type: "text",
                   get: function (g) { return g.docs.join(" "); } },
-                { label: "Project(s)", type: "text",
-                  get: function (g) { return g.projects.join(" "); } },
             ];
+
+            if (has_project) {
+                cols.push({ label: "Project(s)", type: "text",
+                            get: function (g) { return g.projects.join(" "); } });
+            }
 
             money_keys.forEach(function (k) {
                 const m = metric_by_key[k];
@@ -579,17 +622,25 @@ iaes.listview_utils = (function () {
                     cfg.metrics.forEach(function (m) { tot.sums[m.key] += flt(g.sums[m.key]); });
                 });
 
-                let tds = "<td></td>";
-                tds += "<td>" + __("TOTAL") + " (" + list.length + " " +
-                       cfg.party.label.toLowerCase() + (list.length === 1 ? "" : "s") + ")</td>";
-                tds += '<td style="text-align:center">' + tot.count + "</td>";
-                tds += "<td></td><td></td>";
-                money_keys.forEach(function (k) {
-                    tds += '<td style="text-align:right">' + money(tot.sums[k]) + "</td>";
+                // Built by walking `cols` rather than by fixed offsets, so an
+                // absent Project(s) column cannot shift the money cells.
+                let tds = "";
+                cols.forEach(function (c, i) {
+                    if (i === 0) {
+                        tds += "<td></td>";
+                    } else if (i === 1) {
+                        tds += "<td>" + __("TOTAL") + " (" + list.length + " " +
+                               cfg.party.label.toLowerCase() + (list.length === 1 ? "" : "s") + ")</td>";
+                    } else if (c.sort === "count") {
+                        tds += '<td style="text-align:center">' + tot.count + "</td>";
+                    } else if (c.sort === "overdue") {
+                        tds += '<td style="text-align:right;color:#c0392b">' + money(tot.overdue) + "</td>";
+                    } else if (c.money) {
+                        tds += '<td style="text-align:right">' + money(tot.sums[c.sort]) + "</td>";
+                    } else {
+                        tds += "<td></td>";
+                    }
                 });
-                if (cfg.ageing) {
-                    tds += '<td style="text-align:right;color:#c0392b">' + money(tot.overdue) + "</td>";
-                }
                 return '<tr style="font-weight:700;background:#f5f5f5;border-top:2px solid #ccc">' + tds + "</tr>";
             }
 
@@ -742,24 +793,35 @@ iaes.listview_utils = (function () {
             const status = {};
             rows.forEach(function (r) { if (r.status) status[r.status] = (status[r.status] || 0) + 1; });
 
-            const line = function (label, val, color) {
+            // Every figure is individually click-to-copy. `raw` is what lands on
+            // the clipboard -- the plain number, not the formatted string, so it
+            // pastes straight into a spreadsheet cell.
+            const line = function (label, val, color, raw) {
+                const copyable = raw != null;
                 return '<tr><td style="padding:3px 0;color:#555">' + esc(label) + "</td>" +
-                       '<td style="padding:3px 0;text-align:right;font-weight:600' +
-                       (color ? ";color:" + color : "") + '">' + val + "</td></tr>";
+                       '<td class="' + (copyable ? "iaes-val" : "") + '"' +
+                       (copyable ? ' data-copy="' + esc(raw) + '" title="' + __("Click to copy") + '"' : "") +
+                       ' style="padding:3px 0;text-align:right;font-weight:600' +
+                       (copyable ? ";cursor:pointer" : "") +
+                       (color ? ";color:" + color : "") + '">' + val +
+                       (copyable ? ' <span style="opacity:.3;font-size:11px;font-weight:400">&#10697;</span>' : "") +
+                       "</td></tr>";
             };
 
             let metric_html = "";
             visible_metrics(cfg).forEach(function (m) {
                 const c = m.color === "red" ? "#c0392b" : m.color === "green" ? "#27ae60" : "";
-                metric_html += line(m.label + ":", money(sums[m.key]), c);
+                metric_html += line(m.label + ":", money(sums[m.key]), c, flt(sums[m.key]).toFixed(2));
             });
 
             // Outstanding % only means something where a payable base exists.
             let pct_html = "";
             if (sums.payable !== undefined && flt(sums.payable)) {
-                pct_html = line(__("Outstanding %") + ":", (flt(sums.due) / flt(sums.payable) * 100).toFixed(1) + "%");
+                const p = (flt(sums.due) / flt(sums.payable) * 100).toFixed(1);
+                pct_html = line(__("Outstanding %") + ":", p + "%", "", p);
             } else if (sums.sanctioned !== undefined && flt(sums.sanctioned)) {
-                pct_html = line(__("Outstanding %") + ":", (flt(sums.due) / flt(sums.sanctioned) * 100).toFixed(1) + "%");
+                const p = (flt(sums.due) / flt(sums.sanctioned) * 100).toFixed(1);
+                pct_html = line(__("Outstanding %") + ":", p + "%", "", p);
             }
 
             let ageing_html = "";
@@ -771,7 +833,9 @@ iaes.listview_utils = (function () {
                 });
                 const arow = function (label, v, c) {
                     return '<tr><td style="padding:2px 0;color:#666;font-size:12px">' + label + "</td>" +
-                           '<td style="padding:2px 0;text-align:right;font-size:12px' +
+                           '<td class="iaes-val" data-copy="' + esc(flt(v).toFixed(2)) +
+                           '" title="' + __("Click to copy") + '"' +
+                           ' style="padding:2px 0;text-align:right;font-size:12px;cursor:pointer' +
                            (c ? ";color:" + c : "") + '">' + money(v) + "</td></tr>";
                 };
                 ageing_html =
@@ -816,7 +880,7 @@ iaes.listview_utils = (function () {
                     mixed +
                     '<table style="width:100%">' + metric_html + "</table>" +
                     '<hr style="margin:8px 0"><table style="width:100%">' +
-                        line(__("Avg / record") + ":", money(avg)) + pct_html +
+                        line(__("Avg / record") + ":", money(avg), "", flt(avg).toFixed(2)) + pct_html +
                     "</table>" +
                     ageing_html +
                     (chips ? '<hr style="margin:8px 0"><div>' + chips + "</div>" : "") +
@@ -830,6 +894,11 @@ iaes.listview_utils = (function () {
             const $p = $("#" + PANEL_ID);
 
             $p.find(".iaes-close").on("click", function () { $p.remove(); });
+
+            // Per-figure copy. Delegated, so it also covers the ageing rows.
+            $p.on("click", ".iaes-val", function () {
+                copy_text($(this).data("copy") + "");
+            });
             $p.find(".iaes-refresh").on("click", function (e) {
                 e.preventDefault();
                 show_totals(current_listview(doctype) || listview, cfg, doctype);
