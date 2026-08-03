@@ -72,6 +72,15 @@
 //    entire feature for that doctype. fetch_rows() therefore filters the
 //    requested field list against frappe.get_meta() before calling, and the
 //    Summary dialog drops the Project(s) column when the field was not fetched.
+//
+// 6. ROW ALIGNMENT ACROSS LIST COLUMNS. PINV(s), Project(s) and Project
+//    Customer(s) used to be three INDEPENDENT deduplicated sets, each in its own
+//    order (insertion order for projects, alphabetical for customers). Reading
+//    across a row therefore paired the wrong values together -- PINV-05164-1
+//    (PROJ-0366, TPC) lined up against "Tanzania Distilleries Ltd". They are now
+//    rendered from one per-document `entries` list, one fixed-height line each,
+//    so line N of every list column is the same document. Do not "tidy" these
+//    back into deduplicated sets.
 // =============================================================================
 
 frappe.provide("iaes");
@@ -80,7 +89,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-02-v6";
+    const BUILD = "2026-08-02-v7";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -551,14 +560,22 @@ iaes.listview_utils = (function () {
             if (!map[key]) {
                 map[key] = {
                     party: r[cfg.party.name_field] || r[cfg.party.field] || "(blank)",
-                    count: 0, docs: [], projects: new Set(), currencies: new Set(),
-                    project_customers: new Set(), overdue: 0, sums: {},
+                    count: 0, docs: [], entries: [], projects: new Set(),
+                    currencies: new Set(), project_customers: new Set(),
+                    overdue: 0, sums: {},
                 };
                 cfg.metrics.forEach(function (m) { map[key].sums[m.key] = 0; });
             }
             const g = map[key];
             g.count += 1;
             g.docs.push(r.name);
+            // Row-aligned triple: the doc, its project, and that project's
+            // customer -- see CORRECTNESS NOTE 6.
+            g.entries.push({
+                name: r.name,
+                project: r.project || "",
+                customer: (r.project && pmap[r.project]) || "",
+            });
             if (r.project) {
                 g.projects.add(r.project);
                 if (pmap[r.project]) g.project_customers.add(pmap[r.project]);
@@ -623,17 +640,25 @@ iaes.listview_utils = (function () {
             cols.push({ label: "Docs", type: "num", align: "center", sort: "count",
                         get: function (g) { return g.count; } });
             cols.push({ label: cfg.abbr + "(s)", type: "text",
-                        get: function (g) { return g.docs.join(" "); } });
+                        get: function (g) {
+                            return g.entries.map(function (e) { return e.name; }).join(" ");
+                        } });
 
             if (has_project) {
                 cols.push({ label: "Project(s)", type: "text",
-                            get: function (g) { return g.projects.join(" "); } });
+                            get: function (g) {
+                                return g.entries.map(function (e) { return e.project; })
+                                                .filter(Boolean).join(" ");
+                            } });
 
                 // End customer, resolved from Project.customer. This is the
                 // column to type into when you want "everything we billed for
                 // customer X", which the invoice itself cannot answer.
                 cols.push({ label: "Project Customer(s)", type: "text",
-                            get: function (g) { return g.project_customers.join(" "); } });
+                            get: function (g) {
+                                return g.entries.map(function (e) { return e.customer; })
+                                                .filter(Boolean).join(" ");
+                            } });
             }
 
             money_keys.forEach(function (k) {
@@ -687,6 +712,29 @@ iaes.listview_utils = (function () {
                 });
             }
 
+            // One line per document, always in the same order, so line N of
+            // PINV(s), Project(s) and Project Customer(s) describe the SAME
+            // invoice -- see CORRECTNESS NOTE 6. Lines are forced to a single
+            // row of fixed height and ellipsised, because a wrapped line in one
+            // column would push the columns out of step again. The full value
+            // stays available on hover and in the CSV.
+            const LINE_H = 19;
+
+            function stacked(g, pick, route) {
+                if (!g.entries.length) return '<span class="text-muted">—</span>';
+                return g.entries.map(function (e) {
+                    const val = pick(e);
+                    const body = val
+                        ? '<a href="/app/' + route + "/" + encodeURIComponent(val) +
+                          '" target="_blank">' + esc(val) + "</a>"
+                        : '<span class="text-muted">—</span>';
+                    return '<div title="' + esc(val || "") + '" style="height:' + LINE_H +
+                           "px;line-height:" + LINE_H +
+                           'px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+                           body + "</div>";
+                }).join("");
+            }
+
             function cell_html(c, g) {
                 const v = c.get(g);
                 if (c.money) {
@@ -694,10 +742,7 @@ iaes.listview_utils = (function () {
                     return "<span" + style + ">" + money(v) + "</span>";
                 }
                 if (c.label === cfg.abbr + "(s)") {
-                    return g.docs.map(function (n) {
-                        return '<a href="/app/' + cfg.route + "/" + encodeURIComponent(n) +
-                               '" target="_blank">' + esc(n) + "</a>";
-                    }).join(", ");
+                    return stacked(g, function (e) { return e.name; }, cfg.route);
                 }
                 if (c.label === "Currency") {
                     return g.currencies.length
@@ -705,20 +750,10 @@ iaes.listview_utils = (function () {
                         : '<span class="text-muted">—</span>';
                 }
                 if (c.label === "Project Customer(s)") {
-                    return g.project_customers.length
-                        ? g.project_customers.map(function (cu) {
-                              return '<a href="/app/customer/' + encodeURIComponent(cu) +
-                                     '" target="_blank">' + esc(cu) + "</a>";
-                          }).join(", ")
-                        : '<span class="text-muted">—</span>';
+                    return stacked(g, function (e) { return e.customer; }, "customer");
                 }
                 if (c.label === "Project(s)") {
-                    return g.projects.length
-                        ? g.projects.map(function (p) {
-                              return '<a href="/app/project/' + encodeURIComponent(p) +
-                                     '" target="_blank">' + esc(p) + "</a>";
-                          }).join(", ")
-                        : '<span class="text-muted">—</span>';
+                    return stacked(g, function (e) { return e.project; }, "project");
                 }
                 return esc(v);
             }
