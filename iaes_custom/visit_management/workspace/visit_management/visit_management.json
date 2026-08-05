@@ -1,0 +1,215 @@
+{
+ "charts": [
+  {
+   "chart_name": "Visits by Status",
+   "label": "Visits by Status"
+  },
+  {
+   "chart_name": "Visits by Sales Person",
+   "label": "Visits by Sales Person"
+  },
+  {
+   "chart_name": "Visits Over Time",
+   "label": "Visits Over Time"
+  }
+ ],
+ "content": "[{\"id\": \"vm_header\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Visit Management</b></span>\", \"col\": 12}}, {\"id\": \"vm_nc_head\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>At a Glance</b></span>\", \"col\": 12}}, {\"id\": \"vm_nc1\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Visits\", \"col\": 3}}, {\"id\": \"vm_nc2\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue Visits\", \"col\": 3}}, {\"id\": \"vm_nc3\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Visits Closed This Month\", \"col\": 3}}, {\"id\": \"vm_nc4\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Follow-ups Overdue\", \"col\": 3}}, {\"id\": \"vm_ch1\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Visits by Sales Person\", \"col\": 12}}, {\"id\": \"vm_sp0\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"vm_sc1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Customer Visit\", \"col\": 3}}, {\"id\": \"vm_sc2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Visit Register\", \"col\": 3}}, {\"id\": \"vm_sc3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sales Person Visit Performance\", \"col\": 3}}, {\"id\": \"vm_sc4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Customer Coverage\", \"col\": 3}}, {\"id\": \"vm_sp1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"vm_h2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Records</b></span>\", \"col\": 12}}, {\"id\": \"vm_card1\", \"type\": \"card\", \"data\": {\"card_name\": \"Visits\", \"col\": 4}}, {\"id\": \"vm_card2\", \"type\": \"card\", \"data\": {\"card_name\": \"Reports\", \"col\": 4}}, {\"id\": \"vm_card3\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
+ "creation": "2026-08-05 20:06:18.488428",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "map-pin",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Visit Management",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Visits",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Customer Visit",
+   "link_count": 0,
+   "link_to": "Customer Visit",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Visit Target",
+   "link_count": 0,
+   "link_to": "Visit Target",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 5,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "Customer Visit",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Visit Register",
+   "link_count": 0,
+   "link_to": "Visit Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "Customer Visit",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Visit Status Summary",
+   "link_count": 0,
+   "link_to": "Visit Status Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "Customer Visit",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Sales Person Visit Performance",
+   "link_count": 0,
+   "link_to": "Sales Person Visit Performance",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "Customer",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Customer Coverage",
+   "link_count": 0,
+   "link_to": "Customer Coverage",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "Customer Visit",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Visit Outcome Analysis",
+   "link_count": 0,
+   "link_to": "Visit Outcome Analysis",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Visit Management Settings",
+   "link_count": 0,
+   "link_to": "Visit Management Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Person",
+   "link_count": 0,
+   "link_to": "Sales Person",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-08-05 20:11:12.313233",
+ "modified_by": "Administrator",
+ "module": "Visit Management",
+ "name": "Visit Management",
+ "number_cards": [
+  {
+   "label": "Open Visits",
+   "number_card_name": "Open Visits"
+  },
+  {
+   "label": "Overdue Visits",
+   "number_card_name": "Overdue Visits"
+  },
+  {
+   "label": "Visits Closed This Month",
+   "number_card_name": "Visits Closed This Month"
+  },
+  {
+   "label": "Follow-ups Overdue",
+   "number_card_name": "Follow-ups Overdue"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 20.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Customer Visit",
+   "link_to": "Customer Visit",
+   "stats_filter": "{}",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "",
+   "label": "Visit Register",
+   "link_to": "Visit Register",
+   "report_ref_doctype": "Customer Visit",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Sales Person Visit Performance",
+   "link_to": "Sales Person Visit Performance",
+   "report_ref_doctype": "Customer Visit",
+   "type": "Report"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Customer Coverage",
+   "link_to": "Customer Coverage",
+   "report_ref_doctype": "Customer",
+   "type": "Report"
+  }
+ ],
+ "title": "Visit Management"
+}

@@ -261,5 +261,40 @@ app_include_js = [
 
 doctype_js = {
     "Payment Entry": "public/js/payment_entry_pull_by_id.js",
+    # Visit Management: "Create > Visit" buttons
+    "Customer": "public/js/customer_visit_button.js",
+    "Lead": "public/js/lead_visit_button.js",
 }
 
+
+# Visit Management module
+# -----------------------
+# Scheduled jobs, Customer/Lead dashboard sections, and idempotent
+# dashboard/card setup. All plain Python inside this app - no Server
+# Script records, so everything works unchanged on Frappe Cloud.
+
+scheduler_events = {
+    "cron": {
+        # 06:30 daily - refresh overdue flags, remind assignees of today's visits
+        "30 6 * * *": [
+            "iaes_custom.visit_management.tasks.flag_overdue_visits",
+            "iaes_custom.visit_management.tasks.send_visit_reminders",
+        ],
+        # 07:00 daily - overdue digest to the sales manager
+        "0 7 * * *": [
+            "iaes_custom.visit_management.tasks.send_overdue_digest",
+        ],
+        # 08:00 Mondays - weekly performance summary
+        "0 8 * * 1": [
+            "iaes_custom.visit_management.tasks.send_weekly_performance_digest",
+        ],
+    }
+}
+
+override_doctype_dashboards = {
+    "Customer": "iaes_custom.visit_management.dashboards.get_customer_dashboard_data",
+    "Lead": "iaes_custom.visit_management.dashboards.get_lead_dashboard_data",
+}
+
+after_install = "iaes_custom.visit_management.setup.after_install"
+after_migrate = "iaes_custom.visit_management.setup.after_migrate"

@@ -1,0 +1,438 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-05 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "visit_details_section",
+  "naming_series",
+  "party_type",
+  "party",
+  "party_name",
+  "column_break_visit",
+  "visit_date",
+  "visit_time",
+  "assigned_to",
+  "territory",
+  "contact_section",
+  "contact_person",
+  "contact_display",
+  "column_break_contact",
+  "contact_mobile",
+  "contact_email",
+  "classification_section",
+  "visit_purpose",
+  "column_break_class",
+  "status",
+  "is_overdue",
+  "reference_section",
+  "visit_references",
+  "objective_section",
+  "visit_objective",
+  "pre_visit_remarks",
+  "outcome_section",
+  "actual_visit_date",
+  "visit_outcome",
+  "column_break_outcome",
+  "next_step",
+  "closing_remarks_section",
+  "closing_remarks",
+  "followup_section",
+  "follow_up_required",
+  "follow_up_type",
+  "follow_up_date",
+  "column_break_followup",
+  "follow_up_reference_type",
+  "follow_up_reference",
+  "calendar_event",
+  "audit_section",
+  "closed_by",
+  "closed_on",
+  "source_visit",
+  "column_break_audit",
+  "original_planned_date",
+  "reschedule_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "visit_details_section",
+   "fieldtype": "Section Break",
+   "label": "Visit Details"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "CV-.YYYY.-",
+   "default": "CV-.YYYY.-",
+   "reqd": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "options": "Customer\nLead",
+   "default": "Customer",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Party",
+   "options": "party_type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "party_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_visit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "visit_date",
+   "fieldtype": "Date",
+   "label": "Visit Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "description": "The planned date. Change it freely to reschedule."
+  },
+  {
+   "fieldname": "visit_time",
+   "fieldtype": "Time",
+   "label": "Visit Time"
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "Sales Person",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "territory",
+   "fieldtype": "Link",
+   "label": "Territory",
+   "options": "Territory",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "contact_section",
+   "fieldtype": "Section Break",
+   "label": "Contact"
+  },
+  {
+   "fieldname": "contact_person",
+   "fieldtype": "Link",
+   "label": "Contact Person",
+   "options": "Contact",
+   "mandatory_depends_on": "eval:doc.party_type==\"Customer\""
+  },
+  {
+   "fieldname": "contact_display",
+   "fieldtype": "Data",
+   "label": "Contact Name",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "column_break_contact",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contact_mobile",
+   "fieldtype": "Data",
+   "label": "Mobile",
+   "read_only": 1,
+   "options": "Phone"
+  },
+  {
+   "fieldname": "contact_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "read_only": 1,
+   "options": "Email"
+  },
+  {
+   "fieldname": "classification_section",
+   "fieldtype": "Section Break",
+   "label": "Classification"
+  },
+  {
+   "fieldname": "visit_purpose",
+   "fieldtype": "Select",
+   "label": "Visit Purpose",
+   "options": "New Business / Prospecting\nQuotation Follow-up\nProject Review / Site Meeting\nTechnical / Product Demonstration\nPayment Collection\nComplaint Resolution\nCourtesy / Relationship\nContract Renewal",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_class",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Open\nIn Progress\nClosed\nCancelled",
+   "default": "Open",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "no_copy": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "is_overdue",
+   "fieldtype": "Check",
+   "label": "Is Overdue",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set automatically when an Open visit passes its date."
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Related Documents"
+  },
+  {
+   "fieldname": "visit_references",
+   "fieldtype": "Table",
+   "label": "References",
+   "options": "Visit Reference",
+   "description": "Quotations, Projects, Opportunities or Leads this visit relates to."
+  },
+  {
+   "fieldname": "objective_section",
+   "fieldtype": "Section Break",
+   "label": "Objective"
+  },
+  {
+   "fieldname": "visit_objective",
+   "fieldtype": "Small Text",
+   "label": "Visit Objective",
+   "reqd": 1,
+   "description": "What this visit is intended to achieve."
+  },
+  {
+   "fieldname": "pre_visit_remarks",
+   "fieldtype": "Text Editor",
+   "label": "Pre-Visit Remarks"
+  },
+  {
+   "fieldname": "outcome_section",
+   "fieldtype": "Section Break",
+   "label": "Visit Outcome",
+   "depends_on": "eval:!doc.__islocal && doc.status!=\"Cancelled\""
+  },
+  {
+   "fieldname": "actual_visit_date",
+   "fieldtype": "Date",
+   "label": "Actual Visit Date",
+   "mandatory_depends_on": "eval:doc.status==\"Closed\""
+  },
+  {
+   "fieldname": "visit_outcome",
+   "fieldtype": "Select",
+   "label": "Visit Outcome",
+   "options": "\nSuccessful - Objective Achieved\nPartially Successful\nPostponed by Customer\nCustomer Unavailable\nCancelled",
+   "mandatory_depends_on": "eval:doc.status==\"Closed\"",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_outcome",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "next_step",
+   "fieldtype": "Select",
+   "label": "Next Step",
+   "options": "\nSend / Revise Quotation\nSchedule Next Visit\nAwait Customer Decision\nEscalate Internally\nTechnical Follow-up Required\nClosed - Won\nClosed - Lost\nNo Further Action",
+   "mandatory_depends_on": "eval:doc.status==\"Closed\""
+  },
+  {
+   "fieldname": "closing_remarks_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "closing_remarks",
+   "fieldtype": "Text Editor",
+   "label": "Closing Remarks",
+   "mandatory_depends_on": "eval:doc.status==\"Closed\"",
+   "description": "The meeting notes. This is the field the reports are read against."
+  },
+  {
+   "fieldname": "followup_section",
+   "fieldtype": "Section Break",
+   "label": "Follow-up",
+   "depends_on": "eval:!doc.__islocal && doc.status!=\"Cancelled\""
+  },
+  {
+   "fieldname": "follow_up_required",
+   "fieldtype": "Check",
+   "label": "Follow-up Required"
+  },
+  {
+   "fieldname": "follow_up_type",
+   "fieldtype": "Select",
+   "label": "Follow-up Type",
+   "options": "\nCall\nEmail\nSite Visit\nSend Quotation\nInternal Action",
+   "depends_on": "follow_up_required",
+   "mandatory_depends_on": "eval:doc.follow_up_required==1"
+  },
+  {
+   "fieldname": "follow_up_date",
+   "fieldtype": "Date",
+   "label": "Follow-up Date",
+   "depends_on": "follow_up_required",
+   "mandatory_depends_on": "eval:doc.follow_up_required==1"
+  },
+  {
+   "fieldname": "column_break_followup",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "follow_up_reference_type",
+   "fieldtype": "Link",
+   "label": "Created Document Type",
+   "options": "DocType",
+   "read_only": 1,
+   "no_copy": 1,
+   "depends_on": "follow_up_reference"
+  },
+  {
+   "fieldname": "follow_up_reference",
+   "fieldtype": "Dynamic Link",
+   "label": "Created Document",
+   "options": "follow_up_reference_type",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "calendar_event",
+   "fieldtype": "Link",
+   "label": "Calendar Event",
+   "options": "Event",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "audit_section",
+   "fieldtype": "Section Break",
+   "label": "Audit Trail",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Link",
+   "label": "Closed By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "closed_on",
+   "fieldtype": "Datetime",
+   "label": "Closed On",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "source_visit",
+   "fieldtype": "Link",
+   "label": "Created From Visit",
+   "options": "Customer Visit",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_audit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "original_planned_date",
+   "fieldtype": "Date",
+   "label": "Original Planned Date",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Stamped once when the visit is created. Never changes."
+  },
+  {
+   "fieldname": "reschedule_count",
+   "fieldtype": "Int",
+   "label": "Times Rescheduled",
+   "read_only": 1,
+   "default": "0",
+   "no_copy": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-05 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Visit Management",
+ "name": "Customer Visit",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "submit": 0,
+   "cancel": 0,
+   "amend": 0,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "submit": 0,
+   "cancel": 0,
+   "amend": 0,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "naming_series:",
+ "title_field": "party_name",
+ "search_fields": "party,party_name,visit_date,assigned_to",
+ "show_title_field_in_link": 1,
+ "default_view": "List",
+ "make_attachments_public": 0,
+ "allow_auto_repeat": 1
+}

@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-05 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reporting_section",
+  "default_visits_per_week",
+  "neglected_customer_days",
+  "column_break_settings",
+  "sales_manager",
+  "notification_section",
+  "notify_manager_on_assignment",
+  "send_overdue_digest",
+  "column_break_notify",
+  "send_weekly_performance_digest",
+  "create_calendar_event"
+ ],
+ "fields": [
+  {
+   "fieldname": "reporting_section",
+   "fieldtype": "Section Break",
+   "label": "Reporting"
+  },
+  {
+   "fieldname": "default_visits_per_week",
+   "fieldtype": "Int",
+   "label": "Default Visits per Week",
+   "default": "2",
+   "description": "Used when a Sales Person has no Visit Target record."
+  },
+  {
+   "fieldname": "neglected_customer_days",
+   "fieldtype": "Int",
+   "label": "Neglected After (Days)",
+   "default": "180",
+   "description": "A customer with no visit for this many days is flagged in the Customer Coverage report."
+  },
+  {
+   "fieldname": "column_break_settings",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_manager",
+   "fieldtype": "Link",
+   "label": "Sales Manager",
+   "options": "User",
+   "description": "Receives the overdue digest and the weekly performance summary."
+  },
+  {
+   "fieldname": "notification_section",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "fieldname": "notify_manager_on_assignment",
+   "fieldtype": "Check",
+   "label": "Notify Manager on Assignment",
+   "default": "1"
+  },
+  {
+   "fieldname": "send_overdue_digest",
+   "fieldtype": "Check",
+   "label": "Send Daily Overdue Digest",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_notify",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "send_weekly_performance_digest",
+   "fieldtype": "Check",
+   "label": "Send Weekly Performance Summary",
+   "default": "1",
+   "description": "Emailed every Monday at 08:00."
+  },
+  {
+   "fieldname": "create_calendar_event",
+   "fieldtype": "Check",
+   "label": "Create Calendar Event on Follow-up",
+   "default": "1"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-05 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Visit Management",
+ "name": "Visit Management Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "report": 0,
+   "export": 0,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "report": 0,
+   "export": 0,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "issingle": 1
+}
