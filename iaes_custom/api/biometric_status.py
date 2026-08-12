@@ -84,6 +84,15 @@ def _device_status():
             r["online"]      = False
             r["ago"]         = "never"
         r["whitelisted"] = r.device_id in _configured_serials()
+        # Auth route: ADMS devices are matched against the serial whitelist;
+        # bridge-fed devices authenticate as an API user, so the whitelist
+        # does not apply to them.
+        if r["whitelisted"]:
+            r["auth_route"] = "adms"
+        elif r.get("total_punches"):
+            r["auth_route"] = "bridge"
+        else:
+            r["auth_route"] = "unknown"
         r["last_punch"]  = str(r.last_punch) if r.last_punch else None
         r["first_punch"] = str(r.first_punch) if r.first_punch else None
 
@@ -94,6 +103,7 @@ def _device_status():
                 "device_id": serial, "total_punches": 0, "punches_today": 0,
                 "last_punch": None, "first_punch": None, "hours_since": None,
                 "online": False, "ago": "never", "whitelisted": True,
+                "auth_route": "adms",
             })
 
     return rows

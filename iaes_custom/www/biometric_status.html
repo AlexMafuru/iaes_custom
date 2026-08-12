@@ -124,18 +124,23 @@ function render(d){
 
   // Devices
   const dv=d.devices||[];
-  document.getElementById('devices').innerHTML = dv.length ? table(
-    ['Device','Status','Whitelisted','Last punch','Today','Total'],
+  document.getElementById('devices').innerHTML = dv.length ? (table(
+    ['Device','Status','Connection','Last punch','Today','Total'],
     dv.map(x=>[
       '<span class="mono">'+esc(x.device_id)+'</span>',
       x.online?'<span class="pill ok">Online</span>'
               :'<span class="pill bad">'+esc(x.ago)+'</span>',
-      x.whitelisted?'<span class="pill info">Yes</span>'
-                   :'<span class="pill grey">No</span>',
+      route(x),
       esc(x.last_punch||'never')+' <span class="muted">('+esc(x.ago)+')</span>',
       x.punches_today||0,
       x.total_punches||0,
     ])
+  ) + '<div class="muted" style="padding:10px 10px 0">'
+    + '<b>Direct</b> — device pushes straight to ERPNext. Its serial must be in '
+    + 'the allowed list, or punches are discarded.<br>'
+    + '<b>Via bridge</b> — device is read by a local server that writes in over '
+    + 'the API. The serial list does not apply.'
+    + '</div>'
   ) : '<div class="empty">No devices have pushed punches yet.</div>';
 
   // Unmapped
@@ -184,6 +189,13 @@ function render(d){
   ) : '<div class="empty">No punches recorded.</div>';
 }
 
+function route(x){
+  if(x.auth_route==='adms')
+    return '<span class="pill info" title="Pushes directly to ERPNext; serial is in the allowed list">Direct</span>';
+  if(x.auth_route==='bridge')
+    return '<span class="pill grey" title="Written in by a local bridge server over the API">Via bridge</span>';
+  return '<span class="pill warn" title="Serial not in the allowed list and no punches recorded">Not recognised</span>';
+}
 const tile=(n,l)=>'<div class="tile"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>';
 const table=(head,rows)=>'<table><thead><tr>'
   + head.map(h=>'<th>'+esc(h)+'</th>').join('')
