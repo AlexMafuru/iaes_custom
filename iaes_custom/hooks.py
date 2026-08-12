@@ -306,3 +306,6 @@ after_migrate = "iaes_custom.visit_management.setup.after_migrate"
 website_route_rules = [
     {"from_route": "/iclock/<path:iclock_path>", "to_route": "iclock"},
 ]
+
+# ZKTeco device traffic — intercept /iclock/* before template resolution
+page_renderer = ["iaes_custom.iclock_renderer.IClockRenderer"]

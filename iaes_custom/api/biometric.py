@@ -290,12 +290,7 @@ def _is_allowed_serial(serial):
 
 
 def _text(body):
-    """Return plain text — ZKTeco firmware cannot parse JSON responses."""
-    frappe.local.response["type"] = "page"
-    frappe.local.response["page_name"] = None
-    frappe.local.response_headers = {"Content-Type": "text/plain; charset=utf-8"}
-    frappe.local.response["http_status_code"] = 200
-    frappe.local.response["message"] = body
+    """Return plain text — the page renderer wraps this in a Response."""
     return body
 
 
