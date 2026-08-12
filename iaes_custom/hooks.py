@@ -298,3 +298,11 @@ override_doctype_dashboards = {
 
 after_install = "iaes_custom.visit_management.setup.after_install"
 after_migrate = "iaes_custom.visit_management.setup.after_migrate"
+
+
+# ── ZKTeco biometric device (ADMS push) ──────────────────────────────────
+# MB360 Plus posts to a fixed path /iclock/cdata which cannot be changed
+# on the device. This rule maps that path onto www/iclock.py.
+website_route_rules = [
+    {"from_route": "/iclock/<path:iclock_path>", "to_route": "iclock"},
+]
