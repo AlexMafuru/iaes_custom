@@ -1,0 +1,198 @@
+{% raw %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biometric Device Status</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:#f6f7f9;color:#1f2937;padding:20px;line-height:1.5;font-size:14px}
+  .wrap{max-width:1100px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;
+         flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  h1{font-size:20px;font-weight:600}
+  .muted{color:#6b7280;font-size:12px}
+  button{background:#1f2937;color:#fff;border:0;padding:8px 14px;border-radius:6px;
+         font-size:13px;cursor:pointer}
+  button:hover{background:#111827}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;
+        padding:18px 20px;margin-bottom:16px}
+  .card h2{font-size:14px;font-weight:600;margin-bottom:14px;color:#374151;
+           text-transform:uppercase;letter-spacing:.04em}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+  .tile{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px}
+  .tile .n{font-size:26px;font-weight:600;line-height:1.2}
+  .tile .l{font-size:12px;color:#6b7280;margin-top:2px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+     color:#6b7280;padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600}
+  td{padding:9px 10px;border-bottom:1px solid #f3f4f6}
+  tr:last-child td{border-bottom:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600}
+  .ok{background:#dcfce7;color:#166534}
+  .bad{background:#fee2e2;color:#991b1b}
+  .warn{background:#fef3c7;color:#92400e}
+  .info{background:#dbeafe;color:#1e40af}
+  .grey{background:#f3f4f6;color:#4b5563}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .empty{color:#9ca3af;font-style:italic;padding:8px 10px}
+  .alert{border-left:3px solid #dc2626;background:#fef2f2;padding:10px 14px;
+         border-radius:0 6px 6px 0;margin-bottom:12px;font-size:13px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.two{grid-template-columns:1fr}}
+  #err{display:none;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;
+       padding:12px 16px;border-radius:8px;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Biometric Device Status</h1>
+      <div class="muted" id="stamp">Loading…</div>
+    </div>
+    <div>
+      <button onclick="load()">Refresh</button>
+    </div>
+  </header>
+
+  <div id="err"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>Devices</h2>
+    <div id="devices"></div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h2>Unmapped Device Users</h2>
+      <div id="unmapped"></div>
+    </div>
+    <div class="card">
+      <h2>Employee Mapping</h2>
+      <div id="mapping"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Punches</h2>
+    <div id="recent"></div>
+  </div>
+
+  <div class="muted" style="text-align:center;padding:10px">
+    Read-only monitoring. Auto-refreshes every 60 seconds.
+  </div>
+</div>
+
+<script>
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load(){
+  try{
+    const r = await fetch('/api/method/iaes_custom.api.biometric_status.get_status',
+                          {headers:{'Accept':'application/json'}});
+    if(!r.ok) throw new Error('HTTP '+r.status+(r.status===403?' — session expired, please log in again':''));
+    const d = (await r.json()).message;
+    document.getElementById('err').style.display='none';
+    render(d);
+  }catch(e){
+    const el=document.getElementById('err');
+    el.style.display='block';
+    el.textContent='Could not load status: '+e.message;
+  }
+}
+
+function render(d){
+  document.getElementById('stamp').textContent =
+    'Server time '+d.server_time+'  ·  fetched '+new Date().toLocaleTimeString();
+
+  const t=d.today||{};
+  const online=(d.devices||[]).filter(x=>x.online).length;
+  document.getElementById('tiles').innerHTML = [
+    tile(online+' / '+(d.devices||[]).length, 'Devices online'),
+    tile(t.punches||0,   'Punches today'),
+    tile(t.employees||0, 'Employees seen today'),
+    tile(t.on_site||0,   'Still on site'),
+    tile(d.employees.mapped_count, 'Mapped employees'),
+    tile(d.unmapped.length, 'Unmapped device IDs'),
+  ].join('');
+
+  // Devices
+  const dv=d.devices||[];
+  document.getElementById('devices').innerHTML = dv.length ? table(
+    ['Device','Status','Whitelisted','Last punch','Today','Total'],
+    dv.map(x=>[
+      '<span class="mono">'+esc(x.device_id)+'</span>',
+      x.online?'<span class="pill ok">Online</span>'
+              :'<span class="pill bad">'+esc(x.ago)+'</span>',
+      x.whitelisted?'<span class="pill info">Yes</span>'
+                   :'<span class="pill grey">No</span>',
+      esc(x.last_punch||'never')+' <span class="muted">('+esc(x.ago)+')</span>',
+      x.punches_today||0,
+      x.total_punches||0,
+    ])
+  ) : '<div class="empty">No devices have pushed punches yet.</div>';
+
+  // Unmapped
+  const um=d.unmapped||[];
+  document.getElementById('unmapped').innerHTML = um.length
+    ? '<div class="alert">These device user IDs pushed punches but match no Employee. '
+      + 'Their punches were discarded. Set <b>Attendance Device ID</b> on the '
+      + 'matching Employee record.</div>'
+      + table(['Device user ID','Last seen'],
+              um.map(x=>['<span class="mono">'+esc(x.user_id)+'</span>',
+                         esc(x.last_seen)]))
+    : '<div class="empty">None — every punch matched an employee.</div>';
+
+  // Mapping
+  const m=d.employees;
+  let h='';
+  if(m.duplicates && m.duplicates.length){
+    h+='<div class="alert"><b>Duplicate device IDs.</b> Punches will be '
+     + 'attributed to the wrong person until fixed.<br>'
+     + m.duplicates.map(x=>'ID <span class="mono">'+esc(x.device_id)+'</span> → '
+     + esc(x.employees.join(', '))).join('<br>')+'</div>';
+  }
+  h+='<p style="margin-bottom:10px">'
+   + '<b>'+m.mapped_count+'</b> mapped, <b>'+m.unmapped_count+'</b> active employees without a device ID.'
+   + (m.numeric_min!=null
+        ? '<br><span class="muted">IDs in use '+m.numeric_min+'–'+m.numeric_max
+          +' · next free '+m.next_free+'</span>' : '')
+   + '</p>';
+  h+= m.mapped.length ? table(['ID','Employee','Branch'],
+        m.mapped.map(x=>['<span class="mono">'+esc(x.attendance_device_id)+'</span>',
+                         esc(x.employee_name), esc(x.branch||'-')]))
+      : '<div class="empty">No employees mapped.</div>';
+  document.getElementById('mapping').innerHTML=h;
+
+  // Recent
+  const rp=d.recent_punches||[];
+  document.getElementById('recent').innerHTML = rp.length ? table(
+    ['Time','Employee','Type','Branch','Device'],
+    rp.map(x=>[
+      '<span class="mono">'+esc(x.time)+'</span>',
+      esc(x.employee_name),
+      '<span class="pill '+(x.log_type==='IN'?'ok':'grey')+'">'+esc(x.log_type)+'</span>',
+      esc(x.branch||'-'),
+      '<span class="mono">'+esc(x.device_id)+'</span>',
+    ])
+  ) : '<div class="empty">No punches recorded.</div>';
+}
+
+const tile=(n,l)=>'<div class="tile"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>';
+const table=(head,rows)=>'<table><thead><tr>'
+  + head.map(h=>'<th>'+esc(h)+'</th>').join('')
+  + '</tr></thead><tbody>'
+  + rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')
+  + '</tbody></table>';
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>{% endraw %}
