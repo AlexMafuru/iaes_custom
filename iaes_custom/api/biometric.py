@@ -89,7 +89,9 @@ def iclock(**kwargs):
     treat a JSON body as a failed push.
     """
     try:
-        path   = frappe.form_dict.get("iclock_path", "") or ""
+        path   = (frappe.form_dict.get("iclock_path")
+                  or frappe.request.path.replace("/iclock/", "").strip("/")
+                  or "")
         serial = (frappe.form_dict.get("SN") or "").strip()
         method = frappe.request.method
 
