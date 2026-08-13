@@ -89,9 +89,7 @@ def iclock(**kwargs):
     treat a JSON body as a failed push.
     """
     try:
-        path   = (frappe.form_dict.get("iclock_path")
-                  or frappe.request.path.replace("/iclock/", "").strip("/")
-                  or "")
+        path   = frappe.form_dict.get("iclock_path", "") or ""
         serial = (frappe.form_dict.get("SN") or "").strip()
         method = frappe.request.method
 
@@ -225,7 +223,7 @@ def _process_attlog_line(line, serial):
         )
         return False
 
-    log_type = _resolve_log_type(employee, punch_dt, status)
+    log_type = _resolve_log_type(employee, punch_dt, status, serial)
 
     if _is_duplicate(employee, punch_dt, log_type):
         return False
@@ -239,9 +237,27 @@ def _process_attlog_line(line, serial):
     return True
 
 
-def _resolve_log_type(employee, punch_dt, status):
-    """Map the device status code to IN/OUT, or infer it if configured."""
-    if frappe.conf.get("biometric_infer_log_type"):
+def _resolve_log_type(employee, punch_dt, status, serial=None):
+    """
+    Map the device status code to IN/OUT, or infer it.
+
+    Inference can be enabled globally, or per device serial. Per-device is
+    usually what you want: some terminals report a real state code and some
+    always send 0, and a global flag would discard good data from the
+    working device to fix the broken one.
+
+        "biometric_infer_log_type": true
+        "biometric_infer_serials": ["BQC2262000183"]
+    """
+    infer_serials = frappe.conf.get("biometric_infer_serials") or []
+    if isinstance(infer_serials, str):
+        infer_serials = [s.strip() for s in infer_serials.split(",") if s.strip()]
+
+    should_infer = bool(frappe.conf.get("biometric_infer_log_type"))
+    if serial and serial in infer_serials:
+        should_infer = True
+
+    if should_infer:
         last = frappe.db.sql(
             """
             SELECT log_type FROM `tabEmployee Checkin`
@@ -290,7 +306,12 @@ def _is_allowed_serial(serial):
 
 
 def _text(body):
-    """Return plain text — the page renderer wraps this in a Response."""
+    """Return plain text — ZKTeco firmware cannot parse JSON responses."""
+    frappe.local.response["type"] = "page"
+    frappe.local.response["page_name"] = None
+    frappe.local.response_headers = {"Content-Type": "text/plain; charset=utf-8"}
+    frappe.local.response["http_status_code"] = 200
+    frappe.local.response["message"] = body
     return body
 
 
