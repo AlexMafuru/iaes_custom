@@ -89,7 +89,7 @@ iaes.listview_utils = (function () {
 
     "use strict";
 
-    const BUILD = "2026-08-02-v7";
+    const BUILD = "2026-08-02-v8";
     console.log("[IAES listview utils] build", BUILD, "loaded");
 
     // Cap on ROWS fetched, not documents. A child-table filter fans out one row
@@ -376,6 +376,30 @@ iaes.listview_utils = (function () {
             ],
             summary: ["sanctioned", "due"],
             avg_key: "sanctioned",
+        },
+
+        // Journal Entry has NO party at header level -- party lives on the child
+        // Journal Entry Account rows -- so the grouping dimension is the entry
+        // type instead. `party` here is the generic "what do we group by" slot,
+        // not literally a customer or supplier.
+        "Journal Entry": {
+            route: "journal-entry", abbr: "JV",
+            party: { field: "voucher_type", name_field: "voucher_type", label: "Entry Type" },
+            summary_button: "Entry Type Summary", totals_button: "Journal Entry Totals",
+            // JV totals are already in company currency (Company:company:default_currency),
+            // so there are no base_ twins and nothing to convert.
+            fields: ["voucher_type", "title", "company", "posting_date",
+                     "cheque_no", "user_remark", "total_debit", "total_credit"],
+            metrics: [
+                { key: "debit",  label: "Total Debit",  get: function (r) { return flt(r.total_debit); } },
+                { key: "credit", label: "Total Credit", get: function (r) { return flt(r.total_credit); } },
+                // Should always be 0.00. Anything else means an unbalanced or
+                // partially-saved entry slipped through, so it is shown in red.
+                { key: "diff",   label: "Difference", color: "red",
+                  calc: function (s) { return s.debit - s.credit; } },
+            ],
+            summary: ["debit", "credit"],
+            avg_key: "debit",
         },
     };
 
