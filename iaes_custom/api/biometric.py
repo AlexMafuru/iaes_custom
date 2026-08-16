@@ -59,6 +59,10 @@ from datetime import timedelta
 # ── Configuration ────────────────────────────────────────────────────────────
 DEDUP_WINDOW_SECONDS = 60
 
+# Two pushes of the SAME punch land within a second or two of each other.
+# Kept tight so a genuine punch-out shortly after arriving is not swallowed.
+SAME_PUNCH_WINDOW_SECONDS = 5
+
 # ZKTeco status code -> ERPNext log_type.
 # Some firmware reports 0 for every punch when the F1..F4 state keys are not
 # pressed. In that case set "biometric_infer_log_type": true in site config
@@ -223,6 +227,10 @@ def _process_attlog_line(line, serial):
         )
         return False
 
+    # Type-agnostic check first — see _is_same_punch for why ordering matters.
+    if _is_same_punch(employee, punch_dt):
+        return False
+
     log_type = _resolve_log_type(employee, punch_dt, status, serial)
 
     if _is_duplicate(employee, punch_dt, log_type):
@@ -274,6 +282,29 @@ def _resolve_log_type(employee, punch_dt, status, serial=None):
         return "IN"
 
     return STATUS_MAP.get(status, "IN")
+
+
+def _is_same_punch(employee, punch_dt):
+    """
+    True if this exact punch is already recorded, regardless of log_type.
+
+    Checked BEFORE the log type is resolved. When the type is inferred
+    rather than read from the device, a type-aware check is unsafe: a
+    duplicate push would look back at the record the first push just
+    created, alternate to the opposite type, and pass a same-type check.
+    That turns a harmless duplicate into a false departure.
+    """
+    lower = punch_dt - timedelta(seconds=SAME_PUNCH_WINDOW_SECONDS)
+    upper = punch_dt + timedelta(seconds=SAME_PUNCH_WINDOW_SECONDS)
+    return bool(frappe.db.sql(
+        """
+        SELECT name FROM `tabEmployee Checkin`
+        WHERE employee = %(emp)s
+          AND time BETWEEN %(lo)s AND %(up)s
+        LIMIT 1
+        """,
+        {"emp": employee, "lo": lower, "up": upper},
+    ))
 
 
 def _is_duplicate(employee, punch_dt, log_type):
