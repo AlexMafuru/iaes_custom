@@ -1,6 +1,9 @@
-// Remote Site Biometric Attendance Analysis (v4)
-// =================================================
+// Remote Site Biometric Attendance Analysis (v5 — multi-site)
+// ============================================================
 // ERPNext Script Report — JavaScript file
+// v5: covers both biometric machines — NMB (bio2) and HQ (BQC2262000183).
+//     Site filter is now a selector (All Sites / NMB / HQ); per-site shift
+//     regimes live in SITE_CONFIG in the Python file.
 
 frappe.query_reports["Remote Site Attendance Analysis"] = {
 
@@ -9,7 +12,7 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
         {fieldname:"to_date",     label:__("To Date"),        fieldtype:"Date",   default:frappe.datetime.month_end(),   reqd:1},
         {fieldname:"employee",    label:__("Employee"),       fieldtype:"Link",   options:"Employee", get_query:()=>({filters:{status:"Active"}})},
         {fieldname:"department",  label:__("Department"),     fieldtype:"Link",   options:"Department"},
-        {fieldname:"site",        label:__("Site / Branch"),  fieldtype:"Data",   default:"NMB"},
+        {fieldname:"site",        label:__("Site"),           fieldtype:"Select", options:"All Sites\nNMB\nHQ", default:"All Sites", reqd:1},
         {fieldname:"report_mode", label:__("Report Mode"),    fieldtype:"Select", options:"Summary\nDaily Detail", default:"Summary", reqd:1},
     ],
 
@@ -35,6 +38,20 @@ frappe.query_reports["Remote Site Attendance Analysis"] = {
                 frappe.set_route('List','Employee Checkin');return false;"
                 style="text-decoration:underline;cursor:pointer;font-weight:600;color:#e74c3c;">${count}</a>`;
         };
+
+        if (column.fieldname === "site" && data.site) {
+            const map = {"NMB":"blue","HQ":"green"};
+            return `<span class="indicator-pill ${map[data.site]||'grey'}">${data.site}</span>`;
+        }
+
+        if (column.fieldname === "machine") {
+            if (!data.machine || data.machine === "-") return `<span>-</span>`;
+            // Highlight punches captured on a different site's machine (or both)
+            if (data.site && data.machine !== data.site)
+                return `<span style="color:#e67e22;font-weight:600;"
+                    title="Punched on a different site's machine">${data.machine}</span>`;
+            return `<span style="color:var(--text-muted);">${data.machine}</span>`;
+        }
 
         if (column.fieldname === "employee_name" && mode === "Summary") {
             return `<a href="#"

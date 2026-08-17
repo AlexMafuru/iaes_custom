@@ -3,14 +3,45 @@ from frappe import _
 from frappe.utils import date_diff, flt, cint, getdate, get_first_day, get_last_day, nowdate, now_datetime
 from datetime import datetime, date, timedelta, time as dtime
 
-# ── Shift configuration ─────────────────────────────────────────────────────
-SHIFT_IN_TIME      = dtime(7, 30, 0)
-SHIFT_OUT_TIME     = dtime(17, 0,  0)
-SHIFT_OUT_SAT      = dtime(13, 0,  0)
-STANDARD_HOURS     = 9.5
-STANDARD_HOURS_SAT = 5.5
-LATE_GRACE_MINS    = 10
-EARLY_EXIT_MINS    = 15
+# ── Site / machine configuration ────────────────────────────────────────────
+# Each site (Employee.branch) has its own biometric machine and shift regime.
+#   NMB : ZKTeco "bio2"          — 07:30–17:00 Mon–Fri, Sat half-day to 13:00
+#   HQ  : ZKTeco "BQC2262000183" — 08:00–17:00 Mon–Fri, Sat is a rest day (OT)
+ALL_SITES_LABEL = "All Sites"
+
+SITE_CONFIG = {
+    "NMB": {
+        "in_time":       dtime(7, 30, 0),
+        "out_time":      dtime(17, 0, 0),
+        "sat_out_time":  dtime(13, 0, 0),
+        "sat_working":   True,
+        "std_hours":     9.5,
+        "std_hours_sat": 5.5,
+        "devices":       ["bio2"],
+    },
+    "HQ": {
+        "in_time":       dtime(8, 0, 0),
+        "out_time":      dtime(17, 0, 0),
+        "sat_out_time":  None,
+        "sat_working":   False,
+        "std_hours":     9.0,
+        "std_hours_sat": 0.0,
+        "devices":       ["BQC2262000183"],
+    },
+}
+DEFAULT_SITE    = "NMB"
+DEVICE_SITE     = {d: s for s, cfg in SITE_CONFIG.items() for d in cfg["devices"]}
+LATE_GRACE_MINS = 10
+EARLY_EXIT_MINS = 15
+
+
+def _site_cfg(site):
+    return SITE_CONFIG.get(site) or SITE_CONFIG[DEFAULT_SITE]
+
+
+def _show_site_column(filters):
+    site = ((filters or {}).get("site") or "").strip()
+    return (not site) or site == ALL_SITES_LABEL
 
 
 def get_columns(filters):
@@ -19,10 +50,13 @@ def get_columns(filters):
         {"fieldname": "employee",      "label": _("Employee ID"),   "fieldtype": "Link", "options": "Employee", "width": 110},
         {"fieldname": "employee_name", "label": _("Employee Name"), "fieldtype": "Data", "width": 175},
     ]
+    if _show_site_column(filters):
+        base += [{"fieldname": "site", "label": _("Site"), "fieldtype": "Data", "width": 70}]
     if mode == "Daily Detail":
         base += [
             {"fieldname": "attendance_date", "label": _("Date"),         "fieldtype": "Date",  "width": 100},
             {"fieldname": "day_name",        "label": _("Day"),           "fieldtype": "Data",  "width": 70},
+            {"fieldname": "machine",         "label": _("Machine"),       "fieldtype": "Data",  "width": 80},
             {"fieldname": "first_in",        "label": _("First IN"),      "fieldtype": "Data",  "width": 85},
             {"fieldname": "last_out",        "label": _("Last OUT"),      "fieldtype": "Data",  "width": 85},
             {"fieldname": "work_hours",      "label": _("Work Hrs"),      "fieldtype": "Float", "width": 85,  "precision": 2},
@@ -61,16 +95,23 @@ def execute(filters=None):
     mode         = filters.get("report_mode", "Summary")
     employees    = _get_employees(filters)
     emp_ids      = [e["name"] for e in employees]
+    emp_site     = {e["name"]: (e.get("branch") if e.get("branch") in SITE_CONFIG else DEFAULT_SITE)
+                    for e in employees}
     checkins     = _get_checkins(emp_ids, filters["from_date"], filters["to_date"])
     holidays     = _get_holiday_set(employees, filters["from_date"], filters["to_date"])
-    working_days = _build_working_days_set(filters["from_date"], filters["to_date"], holidays)
-    daily_map    = _build_daily_map(checkins, holidays, filters["to_date"])
+    working_by_site = {
+        site: _build_working_days_set(filters["from_date"], filters["to_date"], holidays,
+                                      cfg["sat_working"])
+        for site, cfg in SITE_CONFIG.items()
+    }
+    daily_map    = _build_daily_map(checkins, holidays, filters["to_date"], emp_site)
     if mode == "Daily Detail":
-        data = _build_detail_rows(employees, daily_map, working_days, holidays)
+        data = _build_detail_rows(employees, daily_map, working_by_site, holidays, emp_site)
     else:
-        data = _build_summary_rows(employees, daily_map, working_days, holidays, filters["to_date"])
+        data = _build_summary_rows(employees, daily_map, working_by_site, holidays,
+                                   filters["to_date"], emp_site)
     chart   = _get_chart(data, mode)
-    summary = _get_summary_cards(data, mode, filters["to_date"])
+    summary = _get_summary_cards(data, mode, filters["to_date"], _show_site_column(filters))
     return columns, data, None, chart, summary
 
 
@@ -89,11 +130,17 @@ def _get_employees(filters):
         conds["name"] = filters["employee"]
     if filters.get("department"):
         conds["department"] = filters["department"]
-    if filters.get("site") and frappe.db.has_column("Employee", "branch"):
-        conds["branch"] = filters["site"]
+    if not filters.get("employee") and frappe.db.has_column("Employee", "branch"):
+        site = (filters.get("site") or "").strip()
+        if site and site != ALL_SITES_LABEL:
+            conds["branch"] = site
+        else:
+            # "All Sites" = every branch that has a biometric machine
+            conds["branch"] = ["in", list(SITE_CONFIG.keys())]
     return frappe.get_all(
         "Employee", filters=conds,
-        fields=["name", "employee_name", "department", "designation", "holiday_list", "default_shift"],
+        fields=["name", "employee_name", "department", "designation", "holiday_list",
+                "default_shift", "branch"],
         order_by="employee_name"
     )
 
@@ -106,7 +153,7 @@ def _get_checkins(employee_ids, from_date, to_date):
         SELECT ec.employee, ec.employee_name,
                DATE(ec.time) AS attendance_date,
                TIME(ec.time) AS punch_time,
-               ec.log_type
+               ec.log_type, ec.device_id
         FROM `tabEmployee Checkin` ec
         WHERE ec.employee IN %(employees)s
           AND DATE(ec.time) BETWEEN %(from_date)s AND %(to_date)s
@@ -162,28 +209,33 @@ def _get_holiday_set(employees, from_date, to_date):
     return holiday_dates
 
 
-def _build_working_days_set(from_date, to_date, holidays):
+def _build_working_days_set(from_date, to_date, holidays, sat_working=True):
+    # Mon–Sat for sites that work Saturdays, Mon–Fri otherwise
+    max_weekday = 6 if sat_working else 5
     working = set()
     cur = getdate(from_date)
     end = getdate(to_date)
     while cur <= end:
-        if cur.weekday() < 6 and cur not in holidays:
+        if cur.weekday() < max_weekday and cur not in holidays:
             working.add(cur)
         cur += timedelta(days=1)
     return working
 
 
-def _build_daily_map(checkins, holidays, to_date):
+def _build_daily_map(checkins, holidays, to_date, emp_site):
     today_local = getdate(nowdate())
     to_dt       = getdate(to_date)
-    is_report_today = True 
+    is_report_today = True
 
     buckets = {}
     for row in checkins:
         key = (row["employee"], row["attendance_date"])
         if key not in buckets:
-            buckets[key] = {"employee_name": row["employee_name"], "ins": [], "outs": []}
+            buckets[key] = {"employee_name": row["employee_name"], "ins": [], "outs": [],
+                            "devices": set()}
         t = _to_time(row["punch_time"])
+        if row.get("device_id"):
+            buckets[key]["devices"].add(DEVICE_SITE.get(row["device_id"], row["device_id"]))
         if row["log_type"] == "IN":
             buckets[key]["ins"].append(t)
         elif row["log_type"] == "OUT":
@@ -191,6 +243,7 @@ def _build_daily_map(checkins, holidays, to_date):
 
     result = {}
     for (emp, att_date), b in buckets.items():
+        cfg  = _site_cfg(emp_site.get(emp))
         ins  = sorted(b["ins"])
         outs = sorted(b["outs"])
         first_in = ins[0]   if ins  else None
@@ -201,10 +254,12 @@ def _build_daily_map(checkins, holidays, to_date):
         is_sunday      = d.weekday() == 6
         is_saturday    = d.weekday() == 5
         is_holiday     = d in holidays
-        is_full_ot_day = is_holiday or is_sunday
+        # A Saturday at a site that doesn't work Saturdays is a full-OT (rest) day
+        is_full_ot_day = is_holiday or is_sunday or (is_saturday and not cfg["sat_working"])
 
-        shift_out = SHIFT_OUT_SAT    if is_saturday else SHIFT_OUT_TIME
-        std_hrs   = STANDARD_HOURS_SAT if is_saturday else STANDARD_HOURS
+        working_sat = is_saturday and cfg["sat_working"]
+        shift_out = cfg["sat_out_time"]  if working_sat else cfg["out_time"]
+        std_hrs   = cfg["std_hours_sat"] if working_sat else cfg["std_hours"]
 
         work_hours = 0.0
         if first_in and last_out:
@@ -227,11 +282,11 @@ def _build_daily_map(checkins, holidays, to_date):
         late_entry = False
         late_by_mins = 0
         if first_in and not is_full_ot_day:
-            threshold_in = datetime.combine(date.today(), SHIFT_IN_TIME) + timedelta(minutes=LATE_GRACE_MINS)
+            threshold_in = datetime.combine(date.today(), cfg["in_time"]) + timedelta(minutes=LATE_GRACE_MINS)
             actual_in    = datetime.combine(date.today(), first_in)
             if actual_in > threshold_in:
                 late_entry   = True
-                late_by_mins = int((actual_in - datetime.combine(date.today(), SHIFT_IN_TIME)).total_seconds() / 60)
+                late_by_mins = int((actual_in - datetime.combine(date.today(), cfg["in_time"])).total_seconds() / 60)
 
         early_exit = False
         early_by_mins = 0
@@ -261,6 +316,7 @@ def _build_daily_map(checkins, holidays, to_date):
 
         result[(emp, att_date)] = {
             "employee_name":  b["employee_name"],
+            "machine":        "+".join(sorted(b["devices"])) if b["devices"] else "-",
             "first_in":       _fmt_time(first_in),
             "last_out":       _fmt_time(last_out) if last_out else ("Active" if is_today else "-"),
             "work_hours":     flt(work_hours, 2),
@@ -282,10 +338,13 @@ def _build_daily_map(checkins, holidays, to_date):
     return result
 
 
-def _build_detail_rows(employees, daily_map, working_days, holidays):
+def _build_detail_rows(employees, daily_map, working_by_site, holidays, emp_site):
     rows = []
     for emp in employees:
         emp_id = emp["name"]
+        site   = emp_site.get(emp_id, DEFAULT_SITE)
+        cfg    = _site_cfg(site)
+        working_days = working_by_site.get(site) or working_by_site[DEFAULT_SITE]
         all_days = set(working_days)
         for (e, d), punch in daily_map.items():
             if e == emp_id and punch.get("is_full_ot_day"):
@@ -298,7 +357,7 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
             is_sunday   = day.weekday() == 6
 
             if is_sunday:       day_label = "Sun (Rest)"
-            elif is_saturday:   day_label = "Sat"
+            elif is_saturday:   day_label = "Sat" if cfg["sat_working"] else "Sat (Rest)"
             else:               day_label = day.strftime("%a")
             if is_holiday:      day_label += " (PH)"
 
@@ -327,8 +386,10 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
             rows.append({
                 "employee":       emp_id,
                 "employee_name":  emp["employee_name"],
+                "site":           site,
                 "attendance_date":str(day),
                 "day_name":       day_label,
+                "machine":        punch["machine"] if punch else "-",
                 "first_in":       punch["first_in"]  if punch else "-",
                 "last_out":       punch["last_out"]  if punch else "-",
                 "work_hours":     wh,
@@ -341,13 +402,15 @@ def _build_detail_rows(employees, daily_map, working_days, holidays):
     return rows
 
 
-def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
+def _build_summary_rows(employees, daily_map, working_by_site, holidays, to_date, emp_site):
     rows = []
-    total_wd = len(working_days)
     today_local = getdate(nowdate())
 
     for emp in employees:
         emp_id = emp["name"]
+        site   = emp_site.get(emp_id, DEFAULT_SITE)
+        working_days = working_by_site.get(site) or working_by_site[DEFAULT_SITE]
+        total_wd = len(working_days)
         present = late_count = early_count = missing_count = holiday_ot_days = 0
         checked_in_total = checked_out_total = on_site_now = 0
         total_wh = ot_total = 0.0
@@ -392,6 +455,7 @@ def _build_summary_rows(employees, daily_map, working_days, holidays, to_date):
         rows.append({
             "employee": emp_id,
             "employee_name": emp["employee_name"],
+            "site": site,
             "total_working_days": total_wd,
             "checked_in": checked_in_total,
             "checked_out": checked_out_total,
@@ -440,7 +504,7 @@ def _get_chart(data, mode):
     }
 
 
-def _get_summary_cards(data, mode, to_date):
+def _get_summary_cards(data, mode, to_date, show_site=False):
     if not data:
         return []
     is_today_report = (getdate(to_date) == getdate(nowdate()))
@@ -469,6 +533,14 @@ def _get_summary_cards(data, mode, to_date):
 
     cards += [
         {"value": n,       "label": _("Employees"),          "indicator": "Blue",                                  "datatype": "Int"},
+    ]
+    if show_site:
+        for site in SITE_CONFIG:
+            site_n = sum(1 for r in data if r.get("site") == site)
+            if site_n:
+                cards += [{"value": site_n, "label": _("{0} Staff").format(site),
+                           "indicator": "Blue", "datatype": "Int"}]
+    cards += [
         {"value": avg_att, "label": _("Avg Attendance %"),   "indicator": "Green" if avg_att >= 85 else "Orange",  "datatype": "Percent"},
         {"value": sum(r["absent_days"]     for r in data),   "label": _("Absent Days"),     "indicator": "Red"    if sum(r["absent_days"]     for r in data) else "Green", "datatype": "Float"},
         {"value": sum(r["late_entries"]    for r in data),   "label": _("Late Arrivals"),   "indicator": "Orange" if sum(r["late_entries"]    for r in data) else "Green", "datatype": "Int"},
