@@ -1,11 +1,11 @@
-// Remote Site Biometric Attendance Analysis (v5 — multi-site)
+// Staff Attendance Analysis (v5 — multi-site, formerly Remote Site Attendance Analysis)
 // ============================================================
 // ERPNext Script Report — JavaScript file
 // v5: covers both biometric machines — NMB (bio2) and HQ (BQC2262000183).
 //     Site filter is now a selector (All Sites / NMB / HQ); per-site shift
 //     regimes live in SITE_CONFIG in the Python file.
 
-frappe.query_reports["Remote Site Attendance Analysis"] = {
+frappe.query_reports["Staff Attendance Analysis"] = {
 
     filters: [
         {fieldname:"from_date",   label:__("From Date"),      fieldtype:"Date",   default:frappe.datetime.month_start(), reqd:1},
