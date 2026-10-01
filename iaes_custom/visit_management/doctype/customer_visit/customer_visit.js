@@ -31,6 +31,20 @@ frappe.ui.form.on("Customer Visit", {
         });
     },
 
+    onload(frm) {
+        // Default Assigned To to the logged-in user's own Sales Person,
+        // resolved server-side through Employee -> User. Reps never type
+        // in this field; the manager changes it only when assigning others.
+        if (frm.is_new() && !frm.doc.assigned_to) {
+            frappe.call({
+                method: "iaes_custom.visit_management.doctype.customer_visit.customer_visit.get_sales_person_for_user",
+                callback(r) {
+                    if (r.message) frm.set_value("assigned_to", r.message);
+                },
+            });
+        }
+    },
+
     refresh(frm) {
         frm.trigger("render_status_banner");
         frm.trigger("add_action_buttons");

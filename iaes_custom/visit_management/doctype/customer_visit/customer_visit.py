@@ -351,6 +351,19 @@ def close_visit(name, actual_visit_date, visit_outcome, next_step,
     doc.save()
     return doc.name
 
+@frappe.whitelist()
+def get_sales_person_for_user(user=None):
+    """Reverse lookup: logged-in user -> their Sales Person record."""
+    user = user or frappe.session.user
+    employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if employee:
+        sales_person = frappe.db.get_value(
+            "Sales Person", {"employee": employee}, "name")
+        if sales_person:
+            return sales_person
+    full_name = frappe.db.get_value("User", user, "full_name")
+    return frappe.db.get_value(
+        "Sales Person", {"sales_person_name": full_name}, "name")
 
 @frappe.whitelist()
 def get_open_visit_count(party_type, party):
