@@ -31,7 +31,7 @@
    "fieldtype": "Select",
    "label": "Zone",
    "mandatory": 0,
-   "options": "\nCentral Zone\nSouthern Zone"
+   "options": "\nCentral Zone\nSouthern Zone\nWestern Zone\nLake Zone"
   }
  ],
  "idx": 0,
