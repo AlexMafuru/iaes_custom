@@ -12,10 +12,14 @@
 //     - (v5) sets the party account (Paid To / Paid From) from the supplied documents'
 //       own payable/receivable account, so a wrong account on the form no longer
 //       causes "Nothing matched"; stops with a clear message if the IDs span accounts
+//     - (v6) for Employee parties, core ERPNext leaves the new-form default cash account
+//       (Cash - IAES) in the party-side field. On Party / Payment Type change this now
+//       moves that cash/bank account to the bank side and puts the company's Expense Claim
+//       payable account on the party side. Only replaces a blank or Cash/Bank account.
 //
 // Touches no core method. Additive only -> upgrade safe.
 
-const BUILD = "2026-11-09-v5";
+const BUILD = "2026-11-09-v6";
 
 // Where each pulled document keeps its party account (invoices path only;
 // orders carry no party account, so they keep using whatever is on the form).
@@ -37,8 +41,51 @@ frappe.ui.form.on("Payment Entry", {
         },
         payment_type(frm) {
                 iaes_setup_pull_buttons(frm);
+                iaes_fix_employee_accounts(frm);
+        },
+        party(frm) {
+                iaes_fix_employee_accounts(frm);
         },
 });
+
+// (v6) Wait for core's own party/payment_type calls to finish, then correct the accounts.
+function iaes_fix_employee_accounts(frm) {
+        frappe.after_ajax(() => iaes_fix_employee_accounts_now(frm));
+}
+
+async function iaes_fix_employee_accounts_now(frm) {
+        const d = frm.doc;
+        if (d.docstatus !== 0 || d.party_type !== "Employee" || !d.party || !d.company) return;
+        if (!["Pay", "Receive"].includes(d.payment_type)) return;
+
+        const party_field = d.payment_type === "Pay" ? "paid_to" : "paid_from";
+        const bank_field = d.payment_type === "Pay" ? "paid_from" : "paid_to";
+
+        const co = await frappe.db.get_value("Company", d.company,
+                ["default_expense_claim_payable_account", "default_payable_account"]);
+        const target = (co.message || {}).default_expense_claim_payable_account
+                || (co.message || {}).default_payable_account;
+        if (!target) return;
+
+        const current = d[party_field];
+        if (current === target) return;
+
+        // Only replace a blank or a Cash/Bank account; leave a deliberate payable/advance account alone.
+        let current_type = "";
+        if (current) {
+                const a = await frappe.db.get_value("Account", current, "account_type");
+                current_type = (a.message || {}).account_type || "";
+                if (!["Cash", "Bank"].includes(current_type)) return;
+        }
+
+        // Move the cash/bank account to the bank side if that side is empty.
+        if (current && !frm.doc[bank_field]) {
+                await frm.set_value(bank_field, current);
+        }
+        await frm.set_value(party_field, target);
+        console.log("[iaes] employee accounts fixed:", party_field, current || "(blank)", "->", target,
+                current && frm.doc[bank_field] === current ? "| " + bank_field + " = " + current : "");
+}
 
 function iaes_setup_pull_buttons(frm) {
         const grp = __("Pull by ID");
