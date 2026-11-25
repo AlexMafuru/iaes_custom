@@ -1,0 +1,679 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "title",
+  "opportunity",
+  "opportunity_from",
+  "party_name",
+  "customer_name",
+  "cb_h1",
+  "quotation_type",
+  "sets",
+  "costing_date",
+  "cb_h2",
+  "company",
+  "status",
+  "quotation",
+  "amended_from",
+  "sb_margins",
+  "margin_a",
+  "min_margin_a",
+  "margin_b",
+  "min_margin_b",
+  "cb_m_b",
+  "margin_c",
+  "min_margin_c",
+  "margin_d",
+  "min_margin_d",
+  "cb_m_d",
+  "margin_e",
+  "min_margin_e",
+  "contingency_pct",
+  "tab_a",
+  "sb_a_items",
+  "imported_items",
+  "sb_a_ship",
+  "shipments",
+  "sb_a_offers",
+  "offers",
+  "tab_b",
+  "local_items",
+  "tab_c",
+  "sb_c",
+  "labour_items",
+  "tab_d",
+  "sb_d",
+  "site_items",
+  "tab_e",
+  "other_items",
+  "tab_summary",
+  "sb_groups",
+  "selling_groups",
+  "sb_totals",
+  "cost_a",
+  "sp_a",
+  "cost_b",
+  "sp_b",
+  "cb_tot_b",
+  "cost_c",
+  "sp_c",
+  "cost_d",
+  "sp_d",
+  "cb_tot_d",
+  "cost_e",
+  "sp_e",
+  "sb_grand",
+  "total_cost",
+  "total_selling",
+  "cb_g1",
+  "gross_profit",
+  "gp_pct",
+  "cb_g2",
+  "vat_amount",
+  "total_incl_vat",
+  "sb_checks",
+  "error_count",
+  "warning_count",
+  "checks_html",
+  "checks_json",
+  "sb_override",
+  "override_approved",
+  "override_reason",
+  "override_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "CST-.YYYY.-",
+   "default": "CST-.YYYY.-",
+   "hidden": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "opportunity",
+   "fieldtype": "Link",
+   "label": "Opportunity",
+   "options": "Opportunity",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "opportunity_from",
+   "fieldtype": "Data",
+   "label": "Opportunity From",
+   "fetch_from": "opportunity.opportunity_from",
+   "read_only": 1
+  },
+  {
+   "fieldname": "party_name",
+   "fieldtype": "Data",
+   "label": "Party",
+   "fetch_from": "opportunity.party_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "opportunity.customer_name",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_h1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "quotation_type",
+   "fieldtype": "Select",
+   "label": "Quotation Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "options": "Supply only\nSupply & Installation\nInstallation only",
+   "default": "Supply only"
+  },
+  {
+   "fieldname": "sets",
+   "fieldtype": "Float",
+   "label": "Number of Sets / Boxes",
+   "default": "1",
+   "reqd": 1,
+   "description": "Quantities per set are multiplied by this number."
+  },
+  {
+   "fieldname": "costing_date",
+   "fieldtype": "Date",
+   "label": "Costing Date",
+   "default": "Today",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_h2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "remember_last_selected_value": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nBlocked\nReady\nQuoted\nCancelled",
+   "default": "Draft",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "allow_on_submit": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "quotation",
+   "fieldtype": "Link",
+   "label": "Quotation",
+   "options": "Quotation",
+   "allow_on_submit": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Costing Sheet",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "sb_margins",
+   "fieldtype": "Section Break",
+   "label": "Margins (from Costing Settings)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "margin_a",
+   "fieldtype": "Percent",
+   "label": "A Imported target margin %"
+  },
+  {
+   "fieldname": "min_margin_a",
+   "fieldtype": "Percent",
+   "label": "A Imported minimum margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "margin_b",
+   "fieldtype": "Percent",
+   "label": "B Local target margin %"
+  },
+  {
+   "fieldname": "min_margin_b",
+   "fieldtype": "Percent",
+   "label": "B Local minimum margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_m_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "margin_c",
+   "fieldtype": "Percent",
+   "label": "C Labour target margin %"
+  },
+  {
+   "fieldname": "min_margin_c",
+   "fieldtype": "Percent",
+   "label": "C Labour minimum margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "margin_d",
+   "fieldtype": "Percent",
+   "label": "D Site target margin %"
+  },
+  {
+   "fieldname": "min_margin_d",
+   "fieldtype": "Percent",
+   "label": "D Site minimum margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_m_d",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "margin_e",
+   "fieldtype": "Percent",
+   "label": "E Other target margin %"
+  },
+  {
+   "fieldname": "min_margin_e",
+   "fieldtype": "Percent",
+   "label": "E Other minimum margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contingency_pct",
+   "fieldtype": "Percent",
+   "label": "Site Contingency %",
+   "depends_on": "eval:doc.quotation_type!='Supply only'"
+  },
+  {
+   "fieldname": "tab_a",
+   "fieldtype": "Tab Break",
+   "label": "A. Imported Goods"
+  },
+  {
+   "fieldname": "sb_a_items",
+   "fieldtype": "Section Break",
+   "label": "Requested items",
+   "depends_on": "eval:doc.quotation_type!='Installation only'"
+  },
+  {
+   "fieldname": "imported_items",
+   "fieldtype": "Table",
+   "label": "Imported Items",
+   "options": "Costing Imported Item"
+  },
+  {
+   "fieldname": "sb_a_ship",
+   "fieldtype": "Section Break",
+   "label": "Supplier shipments",
+   "depends_on": "eval:doc.quotation_type!='Installation only'"
+  },
+  {
+   "fieldname": "shipments",
+   "fieldtype": "Table",
+   "label": "Shipments",
+   "options": "Costing Shipment"
+  },
+  {
+   "fieldname": "sb_a_offers",
+   "fieldtype": "Section Break",
+   "label": "Supplier offers",
+   "depends_on": "eval:doc.quotation_type!='Installation only'"
+  },
+  {
+   "fieldname": "offers",
+   "fieldtype": "Table",
+   "label": "Offers",
+   "options": "Costing Supplier Offer"
+  },
+  {
+   "fieldname": "tab_b",
+   "fieldtype": "Tab Break",
+   "label": "B. Local Goods"
+  },
+  {
+   "fieldname": "local_items",
+   "fieldtype": "Table",
+   "label": "Local Goods",
+   "options": "Costing Local Item"
+  },
+  {
+   "fieldname": "tab_c",
+   "fieldtype": "Tab Break",
+   "label": "C. Labour"
+  },
+  {
+   "fieldname": "sb_c",
+   "fieldtype": "Section Break",
+   "label": "Labour",
+   "depends_on": "eval:doc.quotation_type!='Supply only'"
+  },
+  {
+   "fieldname": "labour_items",
+   "fieldtype": "Table",
+   "label": "Labour",
+   "options": "Costing Labour Item"
+  },
+  {
+   "fieldname": "tab_d",
+   "fieldtype": "Tab Break",
+   "label": "D. Site Costs"
+  },
+  {
+   "fieldname": "sb_d",
+   "fieldtype": "Section Break",
+   "label": "Site and installation costs",
+   "depends_on": "eval:doc.quotation_type!='Supply only'"
+  },
+  {
+   "fieldname": "site_items",
+   "fieldtype": "Table",
+   "label": "Site Costs",
+   "options": "Costing Site Cost"
+  },
+  {
+   "fieldname": "tab_e",
+   "fieldtype": "Tab Break",
+   "label": "E. Other Costs"
+  },
+  {
+   "fieldname": "other_items",
+   "fieldtype": "Table",
+   "label": "Other / One-off Costs",
+   "options": "Costing Other Cost"
+  },
+  {
+   "fieldname": "tab_summary",
+   "fieldtype": "Tab Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "sb_groups",
+   "fieldtype": "Section Break",
+   "label": "Selling lines"
+  },
+  {
+   "fieldname": "selling_groups",
+   "fieldtype": "Table",
+   "label": "Selling Groups",
+   "options": "Costing Selling Group"
+  },
+  {
+   "fieldname": "sb_totals",
+   "fieldtype": "Section Break",
+   "label": "Totals (TZS, excl. VAT)"
+  },
+  {
+   "fieldname": "cost_a",
+   "fieldtype": "Currency",
+   "label": "A Imported goods cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_a",
+   "fieldtype": "Currency",
+   "label": "A Imported goods selling",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cost_b",
+   "fieldtype": "Currency",
+   "label": "B Local goods cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_b",
+   "fieldtype": "Currency",
+   "label": "B Local goods selling",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_tot_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_c",
+   "fieldtype": "Currency",
+   "label": "C Labour cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_c",
+   "fieldtype": "Currency",
+   "label": "C Labour selling",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cost_d",
+   "fieldtype": "Currency",
+   "label": "D Site and installation cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_d",
+   "fieldtype": "Currency",
+   "label": "D Site and installation selling",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_tot_d",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_e",
+   "fieldtype": "Currency",
+   "label": "E Other costs cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_e",
+   "fieldtype": "Currency",
+   "label": "E Other costs selling",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_grand",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost",
+   "options": "TZS",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_selling",
+   "fieldtype": "Currency",
+   "label": "Total Selling (excl. VAT)",
+   "options": "TZS",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_g1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gross_profit",
+   "fieldtype": "Currency",
+   "label": "Gross Profit",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gp_pct",
+   "fieldtype": "Percent",
+   "label": "GP %",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_g2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vat_amount",
+   "fieldtype": "Currency",
+   "label": "VAT",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_incl_vat",
+   "fieldtype": "Currency",
+   "label": "Total incl. VAT",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_checks",
+   "fieldtype": "Section Break",
+   "label": "Checks"
+  },
+  {
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "label": "Errors",
+   "read_only": 1
+  },
+  {
+   "fieldname": "warning_count",
+   "fieldtype": "Int",
+   "label": "Warnings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checks_html",
+   "fieldtype": "HTML",
+   "label": "Checks"
+  },
+  {
+   "fieldname": "checks_json",
+   "fieldtype": "Long Text",
+   "label": "Checks Data",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_override",
+   "fieldtype": "Section Break",
+   "label": "Manager override",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "override_approved",
+   "fieldtype": "Check",
+   "label": "Override Approved",
+   "permlevel": 1,
+   "allow_on_submit": 1,
+   "description": "Lets a sheet with blocking checks be submitted and quoted. Only the approver role can tick it."
+  },
+  {
+   "fieldname": "override_reason",
+   "fieldtype": "Small Text",
+   "label": "Override Reason",
+   "permlevel": 1,
+   "allow_on_submit": 1,
+   "mandatory_depends_on": "override_approved"
+  },
+  {
+   "fieldname": "override_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "allow_on_submit": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Sheet",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "print": 1,
+   "email": 1,
+   "submit": 1
+  },
+  {
+   "role": "Purchase User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "print": 1
+  },
+  {
+   "role": "System Manager",
+   "permlevel": 1,
+   "read": 1,
+   "write": 1
+  },
+  {
+   "role": "Sales Manager",
+   "permlevel": 1,
+   "read": 1,
+   "write": 1
+  },
+  {
+   "role": "Sales User",
+   "permlevel": 1,
+   "read": 1
+  },
+  {
+   "role": "Purchase User",
+   "permlevel": 1,
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "is_submittable": 1,
+ "autoname": "naming_series:",
+ "naming_rule": "By \"Naming Series\" field",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "opportunity,customer_name,quotation_type",
+ "track_changes": 1
+}

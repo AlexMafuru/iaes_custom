@@ -1,0 +1,346 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "supplier",
+  "supplier_quotation",
+  "currency",
+  "fx_rate",
+  "origin",
+  "zone",
+  "incoterm",
+  "cb_sh1",
+  "freight_method",
+  "freight_value",
+  "discount_pct",
+  "default_duty_pct",
+  "sb_charges",
+  "use_default_charges",
+  "insurance_pct",
+  "clearing_pct",
+  "transport_pct",
+  "cb_sh2",
+  "psi_amount",
+  "fixed_charges",
+  "sb_result",
+  "fob",
+  "weight",
+  "freight_method_used",
+  "freight",
+  "freight_estimate",
+  "dhl_reference",
+  "cif",
+  "cb_sh3",
+  "duty",
+  "idl",
+  "rdl",
+  "cpf",
+  "clearing",
+  "transport",
+  "fixed",
+  "cb_sh4",
+  "landed",
+  "factor",
+  "vat_info",
+  "fob_all",
+  "landed_all"
+ ],
+ "fields": [
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "supplier_quotation",
+   "fieldtype": "Link",
+   "label": "Supplier Quotation",
+   "options": "Supplier Quotation",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "fx_rate",
+   "fieldtype": "Float",
+   "label": "FX Rate Used",
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "origin",
+   "fieldtype": "Link",
+   "label": "Origin Country",
+   "options": "Country",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "zone",
+   "fieldtype": "Int",
+   "label": "DHL Zone",
+   "read_only": 1
+  },
+  {
+   "fieldname": "incoterm",
+   "fieldtype": "Link",
+   "label": "Price Basis (Incoterm)",
+   "options": "Incoterm",
+   "description": "CFR, CIF, CPT, CIP, DAP, DPU and DDP mean the supplier price already includes freight."
+  },
+  {
+   "fieldname": "cb_sh1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "freight_method",
+   "fieldtype": "Select",
+   "label": "Freight Method",
+   "options": "\nDHL Table\nPer kg\nFixed",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Blank = default from Costing Settings (DHL up to the switch weight, then Per kg)."
+  },
+  {
+   "fieldname": "freight_value",
+   "fieldtype": "Currency",
+   "label": "Freight Rate per kg / Fixed Amount (TZS)",
+   "options": "TZS",
+   "depends_on": "eval:in_list(['Per kg','Fixed'], doc.freight_method) || !doc.freight_method"
+  },
+  {
+   "fieldname": "discount_pct",
+   "fieldtype": "Percent",
+   "label": "Supplier Discount %"
+  },
+  {
+   "fieldname": "default_duty_pct",
+   "fieldtype": "Percent",
+   "label": "Default Duty %",
+   "default": "10"
+  },
+  {
+   "fieldname": "sb_charges",
+   "fieldtype": "Section Break",
+   "label": "Local charges",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "use_default_charges",
+   "fieldtype": "Check",
+   "label": "Use Costing Settings Charges",
+   "default": "1"
+  },
+  {
+   "fieldname": "insurance_pct",
+   "fieldtype": "Percent",
+   "label": "Insurance % of FOB",
+   "read_only_depends_on": "use_default_charges"
+  },
+  {
+   "fieldname": "clearing_pct",
+   "fieldtype": "Percent",
+   "label": "Clearing % of CIF",
+   "read_only_depends_on": "use_default_charges"
+  },
+  {
+   "fieldname": "transport_pct",
+   "fieldtype": "Percent",
+   "label": "Local Transport % of CIF",
+   "read_only_depends_on": "use_default_charges"
+  },
+  {
+   "fieldname": "cb_sh2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "psi_amount",
+   "fieldtype": "Currency",
+   "label": "Pre-shipment Inspection",
+   "options": "TZS",
+   "read_only_depends_on": "use_default_charges"
+  },
+  {
+   "fieldname": "fixed_charges",
+   "fieldtype": "Currency",
+   "label": "Fixed Charges (TBS, port, storage, guarantee)",
+   "options": "TZS",
+   "read_only_depends_on": "use_default_charges"
+  },
+  {
+   "fieldname": "sb_result",
+   "fieldtype": "Section Break",
+   "label": "Landed cost (awarded lines)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "fob",
+   "fieldtype": "Currency",
+   "label": "FOB",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weight",
+   "fieldtype": "Float",
+   "label": "Weight (kg)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "freight_method_used",
+   "fieldtype": "Data",
+   "label": "Freight Method Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "freight",
+   "fieldtype": "Currency",
+   "label": "Freight",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "freight_estimate",
+   "fieldtype": "Check",
+   "label": "Freight Is Estimate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dhl_reference",
+   "fieldtype": "Currency",
+   "label": "DHL Reference",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cif",
+   "fieldtype": "Currency",
+   "label": "CIF (customs value)",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_sh3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "duty",
+   "fieldtype": "Currency",
+   "label": "Import Duty",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "idl",
+   "fieldtype": "Currency",
+   "label": "IDL",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rdl",
+   "fieldtype": "Currency",
+   "label": "RDL",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cpf",
+   "fieldtype": "Currency",
+   "label": "CPF",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "clearing",
+   "fieldtype": "Currency",
+   "label": "Clearing",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transport",
+   "fieldtype": "Currency",
+   "label": "Local Transport",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fixed",
+   "fieldtype": "Currency",
+   "label": "Fixed Charges",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_sh4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "landed",
+   "fieldtype": "Currency",
+   "label": "Landed Cost",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "factor",
+   "fieldtype": "Float",
+   "label": "Landed / FOB",
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vat_info",
+   "fieldtype": "Currency",
+   "label": "Import VAT (info)",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fob_all",
+   "fieldtype": "Currency",
+   "label": "FOB - all quoted",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "landed_all",
+   "fieldtype": "Currency",
+   "label": "Landed - all quoted",
+   "options": "TZS",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Shipment",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

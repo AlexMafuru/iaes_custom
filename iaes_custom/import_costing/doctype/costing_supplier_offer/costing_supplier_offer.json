@@ -1,0 +1,190 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "supplier",
+  "item_code",
+  "part_no",
+  "description",
+  "match_type",
+  "engineer_confirmed",
+  "cb_of1",
+  "unit_price",
+  "unit_weight",
+  "hs_code",
+  "duty_override",
+  "sb_of_result",
+  "qty",
+  "duty_used",
+  "idl_used",
+  "matched_row",
+  "cb_of2",
+  "unit_landed_all",
+  "unit_landed_awarded",
+  "awarded",
+  "supplier_quotation_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "part_no",
+   "fieldtype": "Data",
+   "label": "Order / Part No.",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "For an alternative part type the requested article number here and the supplier code in the description."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "match_type",
+   "fieldtype": "Select",
+   "label": "Match",
+   "options": "Exact\nAlternative\nReplacement",
+   "default": "Exact",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "engineer_confirmed",
+   "fieldtype": "Check",
+   "label": "Engineer Confirmed",
+   "depends_on": "eval:doc.match_type!='Exact'"
+  },
+  {
+   "fieldname": "cb_of1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unit_price",
+   "fieldtype": "Float",
+   "label": "Unit Price (supplier currency)",
+   "in_list_view": 1,
+   "columns": 1,
+   "precision": "4"
+  },
+  {
+   "fieldname": "unit_weight",
+   "fieldtype": "Float",
+   "label": "Unit Weight (kg)",
+   "in_list_view": 1,
+   "columns": 1,
+   "precision": "4"
+  },
+  {
+   "fieldname": "hs_code",
+   "fieldtype": "Link",
+   "label": "HS Code",
+   "options": "Customs Tariff Number",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "duty_override",
+   "fieldtype": "Data",
+   "label": "Duty % Override",
+   "description": "Blank = HS Code duty, else the shipment default. Type 0 for duty free."
+  },
+  {
+   "fieldname": "sb_of_result",
+   "fieldtype": "Section Break",
+   "label": "Result",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "duty_used",
+   "fieldtype": "Percent",
+   "label": "Duty % Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "idl_used",
+   "fieldtype": "Percent",
+   "label": "IDL % Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "matched_row",
+   "fieldtype": "Int",
+   "label": "Requested Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_of2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unit_landed_all",
+   "fieldtype": "Currency",
+   "label": "Landed Unit - all quoted",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "unit_landed_awarded",
+   "fieldtype": "Currency",
+   "label": "Landed Unit - awarded",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "awarded",
+   "fieldtype": "Check",
+   "label": "Awarded",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_quotation_item",
+   "fieldtype": "Data",
+   "label": "Supplier Quotation Item",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Supplier Offer",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

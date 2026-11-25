@@ -1,0 +1,211 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "part_no",
+  "description",
+  "qty_per_set",
+  "uom",
+  "selling_group",
+  "cb_sel",
+  "qty",
+  "cheapest_supplier",
+  "lowest_unit_cost",
+  "award_override",
+  "override_reason",
+  "awarded_supplier",
+  "sb_price",
+  "unit_cost",
+  "margin_override",
+  "margin_used",
+  "unit_sp",
+  "cb_price",
+  "cost_per_set",
+  "sp_per_set",
+  "total_cost",
+  "total_sp",
+  "check_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "part_no",
+   "fieldtype": "Data",
+   "label": "Article / Part No.",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Supplier offers match on Item, else on this number (spaces, case and leading zeros ignored)."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "qty_per_set",
+   "fieldtype": "Float",
+   "label": "Qty per Set",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "1"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "selling_group",
+   "fieldtype": "Data",
+   "label": "Selling Group",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "cb_sel",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Total Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cheapest_supplier",
+   "fieldtype": "Link",
+   "label": "Cheapest Supplier",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lowest_unit_cost",
+   "fieldtype": "Currency",
+   "label": "Lowest Landed Unit Cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "award_override",
+   "fieldtype": "Link",
+   "label": "Award Override",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "override_reason",
+   "fieldtype": "Small Text",
+   "label": "Override Reason",
+   "depends_on": "award_override"
+  },
+  {
+   "fieldname": "awarded_supplier",
+   "fieldtype": "Link",
+   "label": "Awarded Supplier",
+   "options": "Supplier",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_price",
+   "fieldtype": "Section Break",
+   "label": "Price"
+  },
+  {
+   "fieldname": "unit_cost",
+   "fieldtype": "Currency",
+   "label": "Landed Unit Cost (awarded)",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "margin_override",
+   "fieldtype": "Percent",
+   "label": "Margin Override %",
+   "description": "0 = use the section margin."
+  },
+  {
+   "fieldname": "margin_used",
+   "fieldtype": "Percent",
+   "label": "Margin Used %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unit_sp",
+   "fieldtype": "Currency",
+   "label": "Unit SP",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_price",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_per_set",
+   "fieldtype": "Currency",
+   "label": "Cost per Set",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_per_set",
+   "fieldtype": "Currency",
+   "label": "SP per Set",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_sp",
+   "fieldtype": "Currency",
+   "label": "Total SP",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "check_status",
+   "fieldtype": "Data",
+   "label": "Check",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Imported Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

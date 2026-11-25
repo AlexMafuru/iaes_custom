@@ -1,0 +1,414 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tab_rates",
+  "sb_fx",
+  "fx_max_age_days",
+  "exchange_rates",
+  "sb_stat",
+  "vat_pct",
+  "rdl_pct",
+  "cpf_pct",
+  "cb_stat",
+  "rates_owner",
+  "rates_verified_on",
+  "sb_local",
+  "clearing_pct",
+  "transport_pct",
+  "insurance_pct",
+  "cb_local",
+  "psi_amount",
+  "tbs_amount",
+  "port_amount",
+  "storage_amount",
+  "guarantee_amount",
+  "tab_margins",
+  "sb_margin",
+  "margin_imported",
+  "min_margin_imported",
+  "margin_local",
+  "min_margin_local",
+  "margin_labour",
+  "min_margin_labour",
+  "margin_site",
+  "min_margin_site",
+  "margin_other",
+  "min_margin_other",
+  "sb_approve",
+  "approver_role",
+  "tab_freight",
+  "sb_freight",
+  "default_freight_method",
+  "dhl_switch_weight",
+  "block_freight_estimate",
+  "cb_freight",
+  "dhl_rate_card_date",
+  "dhl_discount_pct",
+  "dhl_fuel_surcharge_pct",
+  "origin_freight_rates",
+  "sb_dhl",
+  "dhl_rates",
+  "tab_quote",
+  "sb_quote",
+  "default_group_item",
+  "installation_item",
+  "site_item",
+  "other_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "tab_rates",
+   "fieldtype": "Tab Break",
+   "label": "Rates"
+  },
+  {
+   "fieldname": "sb_fx",
+   "fieldtype": "Section Break",
+   "label": "Exchange rates"
+  },
+  {
+   "fieldname": "fx_max_age_days",
+   "fieldtype": "Int",
+   "label": "Exchange Rate Valid for (days)",
+   "default": "3",
+   "description": "A rate older than this blocks Make Quotation. 3 days keeps Mondays and holidays workable."
+  },
+  {
+   "fieldname": "exchange_rates",
+   "fieldtype": "Table",
+   "label": "Exchange Rates",
+   "options": "Costing Exchange Rate"
+  },
+  {
+   "fieldname": "sb_stat",
+   "fieldtype": "Section Break",
+   "label": "Statutory import charges (verify before each quotation)"
+  },
+  {
+   "fieldname": "vat_pct",
+   "fieldtype": "Percent",
+   "label": "VAT %",
+   "default": "18"
+  },
+  {
+   "fieldname": "rdl_pct",
+   "fieldtype": "Percent",
+   "label": "RDL % of CIF",
+   "default": "2",
+   "description": "Railway Development Levy, 2% of CIF (Finance Act 2024)."
+  },
+  {
+   "fieldname": "cpf_pct",
+   "fieldtype": "Percent",
+   "label": "CPF % of FOB",
+   "default": "1",
+   "description": "Customs Processing Fee, dry cargo 1% of FOB (GN 158D of 30/6/2026)."
+  },
+  {
+   "fieldname": "cb_stat",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rates_owner",
+   "fieldtype": "Link",
+   "label": "Rates Owner",
+   "options": "User",
+   "description": "Person who keeps these rates up to date."
+  },
+  {
+   "fieldname": "rates_verified_on",
+   "fieldtype": "Date",
+   "label": "Rates Last Verified"
+  },
+  {
+   "fieldname": "sb_local",
+   "fieldtype": "Section Break",
+   "label": "Default local charges (per supplier shipment)"
+  },
+  {
+   "fieldname": "clearing_pct",
+   "fieldtype": "Percent",
+   "label": "Clearing / Agency % of CIF",
+   "default": "0.2"
+  },
+  {
+   "fieldname": "transport_pct",
+   "fieldtype": "Percent",
+   "label": "Local Transport % of CIF",
+   "default": "0.1"
+  },
+  {
+   "fieldname": "insurance_pct",
+   "fieldtype": "Percent",
+   "label": "Marine / Air Insurance % of FOB",
+   "default": "0"
+  },
+  {
+   "fieldname": "cb_local",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "psi_amount",
+   "fieldtype": "Currency",
+   "label": "Pre-shipment Inspection (TZS)",
+   "options": "TZS",
+   "default": "0"
+  },
+  {
+   "fieldname": "tbs_amount",
+   "fieldtype": "Currency",
+   "label": "TBS Charge (TZS)",
+   "options": "TZS",
+   "default": "30000"
+  },
+  {
+   "fieldname": "port_amount",
+   "fieldtype": "Currency",
+   "label": "Port Charges (TZS)",
+   "options": "TZS",
+   "default": "0"
+  },
+  {
+   "fieldname": "storage_amount",
+   "fieldtype": "Currency",
+   "label": "Storage / Wharfage (TZS)",
+   "options": "TZS",
+   "default": "0"
+  },
+  {
+   "fieldname": "guarantee_amount",
+   "fieldtype": "Currency",
+   "label": "Guarantee / Deferment (TZS)",
+   "options": "TZS",
+   "default": "0"
+  },
+  {
+   "fieldname": "tab_margins",
+   "fieldtype": "Tab Break",
+   "label": "Margins"
+  },
+  {
+   "fieldname": "sb_margin",
+   "fieldtype": "Section Break",
+   "label": "Margin on selling price by section",
+   "description": "Selling price = cost / (1 - margin), rounded up to the nearest 100."
+  },
+  {
+   "fieldname": "margin_imported",
+   "fieldtype": "Percent",
+   "label": "Imported goods (A) target margin %",
+   "default": "40"
+  },
+  {
+   "fieldname": "min_margin_imported",
+   "fieldtype": "Percent",
+   "label": "Imported goods (A) minimum margin %",
+   "default": "0"
+  },
+  {
+   "fieldname": "margin_local",
+   "fieldtype": "Percent",
+   "label": "Local goods (B) target margin %",
+   "default": "40"
+  },
+  {
+   "fieldname": "min_margin_local",
+   "fieldtype": "Percent",
+   "label": "Local goods (B) minimum margin %",
+   "default": "0"
+  },
+  {
+   "fieldname": "margin_labour",
+   "fieldtype": "Percent",
+   "label": "Labour (C) target margin %",
+   "default": "40"
+  },
+  {
+   "fieldname": "min_margin_labour",
+   "fieldtype": "Percent",
+   "label": "Labour (C) minimum margin %",
+   "default": "0"
+  },
+  {
+   "fieldname": "margin_site",
+   "fieldtype": "Percent",
+   "label": "Site and installation (D) target margin %",
+   "default": "40"
+  },
+  {
+   "fieldname": "min_margin_site",
+   "fieldtype": "Percent",
+   "label": "Site and installation (D) minimum margin %",
+   "default": "0"
+  },
+  {
+   "fieldname": "margin_other",
+   "fieldtype": "Percent",
+   "label": "Other costs (E) target margin %",
+   "default": "40"
+  },
+  {
+   "fieldname": "min_margin_other",
+   "fieldtype": "Percent",
+   "label": "Other costs (E) minimum margin %",
+   "default": "0"
+  },
+  {
+   "fieldname": "sb_approve",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "approver_role",
+   "fieldtype": "Link",
+   "label": "Role That May Override Blocks",
+   "options": "Role",
+   "default": "Sales Manager"
+  },
+  {
+   "fieldname": "tab_freight",
+   "fieldtype": "Tab Break",
+   "label": "Freight"
+  },
+  {
+   "fieldname": "sb_freight",
+   "fieldtype": "Section Break",
+   "label": "Freight defaults"
+  },
+  {
+   "fieldname": "default_freight_method",
+   "fieldtype": "Select",
+   "label": "Default Method above Switch Weight",
+   "options": "Per kg\nFixed",
+   "default": "Per kg"
+  },
+  {
+   "fieldname": "dhl_switch_weight",
+   "fieldtype": "Float",
+   "label": "Use DHL up to (kg)",
+   "default": "20",
+   "description": "Shipments up to this awarded weight default to the DHL table; heavier ones to the method above."
+  },
+  {
+   "fieldname": "block_freight_estimate",
+   "fieldtype": "Check",
+   "label": "Block Quotation on Freight Estimate",
+   "default": "0"
+  },
+  {
+   "fieldname": "cb_freight",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "dhl_rate_card_date",
+   "fieldtype": "Date",
+   "label": "DHL Rate Card Date"
+  },
+  {
+   "fieldname": "dhl_discount_pct",
+   "fieldtype": "Percent",
+   "label": "DHL Account Discount %",
+   "default": "5"
+  },
+  {
+   "fieldname": "dhl_fuel_surcharge_pct",
+   "fieldtype": "Percent",
+   "label": "DHL Fuel Surcharge %",
+   "default": "0",
+   "description": "Changes weekly; see the DHL website."
+  },
+  {
+   "fieldname": "origin_freight_rates",
+   "fieldtype": "Table",
+   "label": "Default Per kg Rates by Origin",
+   "options": "Costing Origin Freight Rate"
+  },
+  {
+   "fieldname": "sb_dhl",
+   "fieldtype": "Section Break",
+   "label": "DHL Express Worldwide Import rates (TZS, non-documents)",
+   "description": "Zones come from the DHL Zone field on each Country."
+  },
+  {
+   "fieldname": "dhl_rates",
+   "fieldtype": "Table",
+   "label": "DHL Rates",
+   "options": "Costing DHL Rate"
+  },
+  {
+   "fieldname": "tab_quote",
+   "fieldtype": "Tab Break",
+   "label": "Quotation"
+  },
+  {
+   "fieldname": "sb_quote",
+   "fieldtype": "Section Break",
+   "label": "Items used on the customer Quotation"
+  },
+  {
+   "fieldname": "default_group_item",
+   "fieldtype": "Link",
+   "label": "Default Item for Selling Groups",
+   "options": "Item"
+  },
+  {
+   "fieldname": "installation_item",
+   "fieldtype": "Link",
+   "label": "Item for Labour / Installation Lump Sum",
+   "options": "Item"
+  },
+  {
+   "fieldname": "site_item",
+   "fieldtype": "Link",
+   "label": "Item for Site Costs Lump Sum",
+   "options": "Item"
+  },
+  {
+   "fieldname": "other_item",
+   "fieldtype": "Link",
+   "label": "Item for Other Costs Lump Sum",
+   "options": "Item"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "print": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1
+  },
+  {
+   "role": "Purchase User",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "issingle": 1
+}
