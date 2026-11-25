@@ -35,9 +35,7 @@
    "fieldname": "item_code",
    "fieldtype": "Link",
    "label": "Item",
-   "options": "Item",
-   "in_list_view": 1,
-   "columns": 1
+   "options": "Item"
   },
   {
    "fieldname": "part_no",
@@ -71,9 +69,7 @@
   {
    "fieldname": "selling_group",
    "fieldtype": "Data",
-   "label": "Selling Group",
-   "in_list_view": 1,
-   "columns": 1
+   "label": "Selling Group"
   },
   {
    "fieldname": "cb_sel",
@@ -131,7 +127,7 @@
    "label": "Landed Unit Cost (awarded)",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {
@@ -152,7 +148,7 @@
    "label": "Unit SP",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {

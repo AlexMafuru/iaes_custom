@@ -56,15 +56,13 @@
    "options": "Supplier",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 2
+   "columns": 1
   },
   {
    "fieldname": "supplier_quotation",
    "fieldtype": "Link",
    "label": "Supplier Quotation",
-   "options": "Supplier Quotation",
-   "in_list_view": 1,
-   "columns": 1
+   "options": "Supplier Quotation"
   },
   {
    "fieldname": "currency",
@@ -213,7 +211,7 @@
    "label": "Freight",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {
@@ -299,7 +297,7 @@
    "label": "Landed Cost",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {

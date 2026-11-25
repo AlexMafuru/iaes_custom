@@ -41,9 +41,7 @@
    "fieldname": "item_code",
    "fieldtype": "Link",
    "label": "Item",
-   "options": "Item",
-   "in_list_view": 1,
-   "columns": 1
+   "options": "Item"
   },
   {
    "fieldname": "part_no",
@@ -97,9 +95,7 @@
    "fieldname": "hs_code",
    "fieldtype": "Link",
    "label": "HS Code",
-   "options": "Customs Tariff Number",
-   "in_list_view": 1,
-   "columns": 1
+   "options": "Customs Tariff Number"
   },
   {
    "fieldname": "duty_override",
@@ -147,7 +143,7 @@
    "label": "Landed Unit - all quoted",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {
@@ -156,7 +152,7 @@
    "label": "Landed Unit - awarded",
    "options": "TZS",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "read_only": 1
   },
   {

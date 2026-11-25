@@ -393,6 +393,13 @@ class CostingSheet(Document):
 		for c in checks:
 			if c.get("table") == "imported_items" and c.get("idx"):
 				by_row.setdefault(c["idx"], []).append(c["message"])
+		# like the Excel Summary: flag lines whose awarded shipment has estimated freight
+		estimated = {sh.supplier for sh in self.shipments if cint(sh.freight_estimate)}
+		for row in self.imported_items:
+			if row.awarded_supplier in estimated:
+				by_row.setdefault(row.idx, []).append(
+					_("Freight estimate - {0}").format(row.awarded_supplier)
+				)
 		for row in self.imported_items:
 			msgs = by_row.get(row.idx)
 			row.check_status = "; ".join(msgs)[:140] if msgs else "OK"
