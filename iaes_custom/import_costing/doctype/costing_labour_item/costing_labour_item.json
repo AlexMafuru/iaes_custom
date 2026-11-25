@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "labour_rate",
+  "description",
+  "people",
+  "days",
+  "day_rate",
+  "per_set",
+  "selling_group",
+  "amount",
+  "sp_amount",
+  "total_cost"
+ ],
+ "fields": [
+  {
+   "fieldname": "labour_rate",
+   "fieldtype": "Link",
+   "label": "Role",
+   "options": "Costing Labour Rate",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description"
+  },
+  {
+   "fieldname": "people",
+   "fieldtype": "Float",
+   "label": "People",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "1"
+  },
+  {
+   "fieldname": "days",
+   "fieldtype": "Float",
+   "label": "Days",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "day_rate",
+   "fieldtype": "Currency",
+   "label": "Day Rate (TZS)",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "fetch_from": "labour_rate.day_rate",
+   "fetch_if_empty": 1
+  },
+  {
+   "fieldname": "per_set",
+   "fieldtype": "Check",
+   "label": "Per Set",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Tick when the cost repeats for every set/box (e.g. panel assembly)."
+  },
+  {
+   "fieldname": "selling_group",
+   "fieldtype": "Data",
+   "label": "Selling Group",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Cost",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sp_amount",
+   "fieldtype": "Currency",
+   "label": "SP (share)",
+   "options": "TZS",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost",
+   "options": "TZS",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Labour Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

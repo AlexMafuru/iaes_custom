@@ -1,0 +1,95 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section",
+  "labour_rate",
+  "cost_type",
+  "description",
+  "qty",
+  "days",
+  "rate",
+  "per_set"
+ ],
+ "fields": [
+  {
+   "fieldname": "section",
+   "fieldtype": "Select",
+   "label": "Section",
+   "options": "Labour\nSite\nOther\nLocal goods",
+   "default": "Labour",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "labour_rate",
+   "fieldtype": "Link",
+   "label": "Role",
+   "options": "Costing Labour Rate",
+   "in_list_view": 1,
+   "columns": 2,
+   "depends_on": "eval:doc.section=='Labour'"
+  },
+  {
+   "fieldname": "cost_type",
+   "fieldtype": "Select",
+   "label": "Site Cost Type",
+   "depends_on": "eval:doc.section=='Site'",
+   "options": "\nPer diem\nAccommodation\nTransport\nEquipment hire\nConsumables\nSubcontractor\nPermits / PPE\nOther"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "People / Qty",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "1"
+  },
+  {
+   "fieldname": "days",
+   "fieldtype": "Float",
+   "label": "Days",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "1"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate (TZS)",
+   "options": "TZS",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Blank on a Labour row = the role's day rate."
+  },
+  {
+   "fieldname": "per_set",
+   "fieldtype": "Check",
+   "label": "Per Set",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Installation Template Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

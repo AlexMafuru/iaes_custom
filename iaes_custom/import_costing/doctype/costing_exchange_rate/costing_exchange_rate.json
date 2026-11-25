@@ -1,0 +1,77 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "currency",
+  "rate",
+  "buffer_pct",
+  "rate_used",
+  "rate_date",
+  "source"
+ ],
+ "fields": [
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "TZS per 1 unit",
+   "in_list_view": 1,
+   "columns": 2,
+   "precision": "4"
+  },
+  {
+   "fieldname": "buffer_pct",
+   "fieldtype": "Percent",
+   "label": "FX Buffer %",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "rate_used",
+   "fieldtype": "Float",
+   "label": "Rate Used",
+   "in_list_view": 1,
+   "columns": 2,
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rate_date",
+   "fieldtype": "Date",
+   "label": "Rate Date",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Costing is blocked when the rate is older than the limit in Costing Settings."
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Source / Owner",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-25 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Import Costing",
+ "name": "Costing Exchange Rate",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

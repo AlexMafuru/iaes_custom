@@ -264,6 +264,8 @@ doctype_js = {
     # Visit Management: "Create > Visit" buttons
     "Customer": "public/js/customer_visit_button.js",
     "Lead": "public/js/lead_visit_button.js",
+    # Import Costing: "Create > Costing Sheet"
+    "Opportunity": "public/js/opportunity_costing_button.js",
 }
 
 
@@ -296,8 +298,14 @@ override_doctype_dashboards = {
     "Lead": "iaes_custom.visit_management.dashboards.get_lead_dashboard_data",
 }
 
-after_install = "iaes_custom.visit_management.setup.after_install"
-after_migrate = "iaes_custom.visit_management.setup.after_migrate"
+after_install = [
+    "iaes_custom.visit_management.setup.after_install",
+    "iaes_custom.import_costing.setup.after_install",
+]
+after_migrate = [
+    "iaes_custom.visit_management.setup.after_migrate",
+    "iaes_custom.import_costing.setup.after_migrate",
+]
 
 
 # ── ZKTeco biometric device (ADMS push) ──────────────────────────────────
