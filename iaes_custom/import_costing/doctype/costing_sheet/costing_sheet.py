@@ -30,6 +30,9 @@ class CostingSheet(Document):
 	# ------------------------------------------------------------ hooks
 	def onload(self):
 		self.set_onload("approver_role", get_settings().approver_role or "Sales Manager")
+		# checks_html is an HTML field, which Frappe does not store: send the rendered
+		# list with the form so the Summary tab can show it
+		self.set_onload("checks_html", render_checks(json.loads(self.checks_json or "[]")))
 
 	def before_insert(self):
 		self.set_margin_defaults(force=True)

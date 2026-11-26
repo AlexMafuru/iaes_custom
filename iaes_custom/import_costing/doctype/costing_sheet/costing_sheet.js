@@ -20,6 +20,9 @@ frappe.ui.form.on("Costing Sheet", {
 
 	refresh(frm) {
 		show_section_help(frm);
+		if (frm.doc.__onload && frm.doc.__onload.checks_html !== undefined) {
+			frm.get_field("checks_html").$wrapper.html(frm.doc.__onload.checks_html);
+		}
 		if (frm.doc.docstatus === 0 && !frm.is_new()) {
 			if (frm.doc.quotation_type !== "Installation only") {
 				frm.add_custom_button(__("Items from Opportunity"), () => run(frm, "get_opportunity_items",
@@ -28,7 +31,12 @@ frappe.ui.form.on("Costing Sheet", {
 					{}, (n) => __("{0} Supplier Quotation(s) added", [n])), __("Get"));
 			}
 			frm.add_custom_button(__("Installation Template"), () => apply_template(frm), __("Get"));
-			frm.add_custom_button(__("Recalculate"), () => frm.save());
+			// mark dirty first: otherwise Frappe skips the save ("No changes in document")
+			// and new rates in Costing Settings are never picked up
+			frm.add_custom_button(__("Recalculate"), () => {
+				frm.dirty();
+				frm.save();
+			});
 		}
 		if (frm.doc.docstatus === 1 && !frm.doc.quotation) {
 			frm.add_custom_button(__("Quotation"), () => make_quotation(frm), __("Create"));
