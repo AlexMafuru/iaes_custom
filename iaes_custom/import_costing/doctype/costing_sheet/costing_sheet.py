@@ -421,13 +421,31 @@ class CostingSheet(Document):
 	# ------------------------------------------------------------ actions
 	@frappe.whitelist()
 	def get_supplier_quotations(self):
-		"""Add every non-cancelled Supplier Quotation linked to the Opportunity."""
+		"""Add every non-cancelled Supplier Quotation linked to the Opportunity, directly
+		or through a Request for Quotation raised for it."""
 		if not self.opportunity:
 			frappe.throw(_("Set the Opportunity first."))
 		existing = {sh.supplier_quotation for sh in self.shipments if sh.supplier_quotation}
+		names = set(
+			frappe.get_all(
+				"Supplier Quotation",
+				filters={"opportunity": self.opportunity, "docstatus": ("<", 2)},
+				pluck="name",
+			)
+		)
+		rfqs = linked_rfqs(self.opportunity)
+		if rfqs:
+			names.update(
+				frappe.get_all(
+					"Supplier Quotation Item",
+					filters={"request_for_quotation": ("in", rfqs), "docstatus": ("<", 2)},
+					pluck="parent",
+					distinct=True,
+				)
+			)
 		sqs = frappe.get_all(
 			"Supplier Quotation",
-			filters={"opportunity": self.opportunity, "docstatus": ("<", 2)},
+			filters={"name": ("in", list(names) or [""]), "docstatus": ("<", 2)},
 			fields=["name", "supplier", "currency", "incoterm"],
 			order_by="creation asc",
 		)
@@ -473,11 +491,35 @@ class CostingSheet(Document):
 	def get_opportunity_items(self):
 		"""Copy the Opportunity's items into section A as requested lines (qty = qty per set)."""
 		opp = frappe.get_doc("Opportunity", self.opportunity)
+		n = self._add_requested_items(opp.items)
+		self.save()
+		return n
+
+	@frappe.whitelist()
+	def get_rfq_items(self):
+		"""Copy the items of every Request for Quotation linked to the Opportunity
+		into section A as requested lines (qty = qty per set, as for Opportunity items)."""
+		if not self.opportunity:
+			frappe.throw(_("Set the Opportunity first."))
+		rfqs = linked_rfqs(self.opportunity)
+		if not rfqs:
+			frappe.throw(
+				_("No Request for Quotation is linked to Opportunity {0}.").format(self.opportunity),
+				title=_("No RFQ found"),
+			)
+		n = 0
+		for name in rfqs:
+			n += self._add_requested_items(frappe.get_doc("Request for Quotation", name).items)
+		self.save()
+		return n
+
+	def _add_requested_items(self, rows):
 		have = {r.item_code for r in self.imported_items if r.item_code}
 		n = 0
-		for it in opp.items:
-			if it.item_code in have:
+		for it in rows:
+			if not it.item_code or it.item_code in have:
 				continue
+			have.add(it.item_code)
 			self.append(
 				"imported_items",
 				{
@@ -489,7 +531,6 @@ class CostingSheet(Document):
 				},
 			)
 			n += 1
-		self.save()
 		return n
 
 	@frappe.whitelist()
@@ -527,6 +568,16 @@ class CostingSheet(Document):
 
 
 # ---------------------------------------------------------------- helpers
+
+
+def linked_rfqs(opportunity):
+	"""Non-cancelled Requests for Quotation raised for this Opportunity."""
+	return frappe.get_all(
+		"Request for Quotation",
+		filters={"opportunity": opportunity, "docstatus": ("<", 2)},
+		pluck="name",
+		order_by="creation asc",
+	)
 
 
 def dhl_table_from_settings(s):

@@ -300,3 +300,63 @@ class TestCostingSheet(FrappeTestCase):
 		self.assertEqual(cs.imported_items[0].awarded_supplier, "neil")
 		self.assertEqual(cs.imported_items[0].qty, 10)
 		self.assertGreater(cs.imported_items[0].unit_cost, 93 * 2650)
+
+	def test_items_and_quotations_from_rfq(self):
+		from erpnext.buying.doctype.request_for_quotation.request_for_quotation import (
+			make_supplier_quotation_from_rfq,
+		)
+
+		item = "_Test Costing Part 3240189"
+		if not frappe.db.exists("Item", item):
+			frappe.get_doc(
+				dict(
+					doctype="Item",
+					item_code=item,
+					stock_uom="Nos",
+					is_stock_item=0,
+					weight_per_unit=0.5,
+					item_group=make_group("Item Group", "_Test Costing", "All Item Groups"),
+				)
+			).insert()
+		opp = make_opportunity()
+		rfq = frappe.get_doc(
+			dict(
+				doctype="Request for Quotation",
+				company=COMPANY,
+				opportunity=opp.name,
+				transaction_date=nowdate(),
+				message_for_supplier="Please quote",
+			)
+		)
+		rfq.append("suppliers", dict(supplier="Phoenix Contact"))
+		rfq.append(
+			"items", dict(item_code=item, qty=10, uom="Nos", conversion_factor=1, schedule_date=nowdate())
+		)
+		rfq.insert()
+		rfq.submit()
+		sq = make_supplier_quotation_from_rfq(rfq.name, for_supplier="Phoenix Contact")
+		sq.currency = "USD"
+		sq.conversion_rate = 2650
+		sq.opportunity = None  # reached through the RFQ only
+		sq.items[0].rate = 19
+		sq.insert()
+
+		cs = frappe.new_doc("Costing Sheet")
+		cs.update(
+			dict(
+				opportunity=opp.name,
+				company=COMPANY,
+				quotation_type="Supply only",
+				sets=1,
+				costing_date=nowdate(),
+			)
+		)
+		cs.insert()
+		self.assertEqual(cs.get_rfq_items(), 1)
+		self.assertEqual(cs.get_rfq_items(), 0)  # no duplicates on a second click
+		self.assertEqual(cs.get_supplier_quotations(), 1)
+		cs.reload()
+		self.assertEqual(cs.imported_items[0].item_code, item)
+		self.assertEqual(cs.imported_items[0].qty_per_set, 10)
+		self.assertEqual(cs.offers[0].unit_price, 19)
+		self.assertEqual(cs.imported_items[0].awarded_supplier, "Phoenix Contact")

@@ -40,7 +40,7 @@ They create a few `_Test` records (company, customer, suppliers), so run them on
 1. **Costing Settings**: enter today's USD / EUR / ZAR rates with today's date; check VAT 18, RDL 2, CPF 1;
    on the Quotation tab pick the items used for selling groups and lump sums.
 2. **Opportunity** → Create → **Costing Sheet**. Opportunity and customer fill in. Pick the quotation type and number of sets.
-3. Get → **Items from Opportunity**, then Get → **Supplier Quotations** (Supplier Quotations whose Opportunity field is this one).
+3. Get → **Items from RFQ** (every RFQ whose Opportunity is this one; or **Items from Opportunity**), then Get → **Supplier Quotations** (those linked to this Opportunity directly or through its RFQ).
 4. A. Imported Goods: check the awarded supplier and Check column on each line; on Supplier shipments set the
    freight method (DHL Table, Per kg with a forwarder rate, or Fixed).
 5. Try an **Award Override** without a reason: the sheet shows a blocking check. Add a reason: it clears.

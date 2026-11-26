@@ -25,6 +25,8 @@ frappe.ui.form.on("Costing Sheet", {
 		}
 		if (frm.doc.docstatus === 0 && !frm.is_new()) {
 			if (frm.doc.quotation_type !== "Installation only") {
+				frm.add_custom_button(__("Items from RFQ"), () => run(frm, "get_rfq_items",
+					{}, (n) => __("{0} item(s) added", [n])), __("Get"));
 				frm.add_custom_button(__("Items from Opportunity"), () => run(frm, "get_opportunity_items",
 					{}, (n) => __("{0} item(s) added", [n])), __("Get"));
 				frm.add_custom_button(__("Supplier Quotations"), () => run(frm, "get_supplier_quotations",
