@@ -267,18 +267,7 @@ def get_data(filters):
     rows.append({**_subtotal_row("-- SECTION 1: CALL OUT CHARGES --", None),
                  "row_type": "section_header"})
 
-    task_filters = {"project": project}
-    task_filters.update(_date_filter("exp_end_date", from_date, to_date))
-    if zone_filter:
-        task_filters["type"] = ["like", "%{}%".format(zone_filter)]
-
-    tasks = frappe.get_all(
-        "Task",
-        filters=task_filters,
-        fields=["name", "subject", "status", "type",
-                "exp_end_date", "act_start_date"],
-        order_by="exp_end_date asc, name asc",
-    )
+    tasks = _get_zone_tasks(project, from_date, to_date, zone_filter)
 
     # Bulk-fetch assignments + attachments for all tasks (3 queries total)
     task_meta = _get_task_meta_bulk([t.name for t in tasks])
@@ -311,13 +300,18 @@ def get_data(filters):
     rows.append({**_subtotal_row("-- SECTION 2: PARTS REPLACEMENTS --", None),
                  "row_type": "section_header"})
 
+    # Each Purchase Invoice line is billed exactly once:
+    #   - PINV lines raised from an MREQ that carries a Zone are billed under
+    #     that MREQ (its Zone and date decide where they appear);
+    #   - every other PINV line is billed through its Task, as before.
     exp_materials  = _get_expense_claim_materials(project, from_date, to_date, zone_filter)
+    mreq_materials = _get_mreq_materials(project, from_date, to_date, zone_filter)
     pinv_materials = _get_pinv_materials(project, from_date, to_date, zone_filter)
 
-    # Group by task (or project if task unknown)
+    # Group by task / MREQ (or project if neither is known)
     by_task = {}
-    for item in exp_materials + pinv_materials:
-        key = item.get("task") or project
+    for item in exp_materials + pinv_materials + mreq_materials:
+        key = item.get("group") or item.get("task") or project
         by_task.setdefault(key, []).append(item)
 
     materials_total = 0.0
@@ -325,7 +319,15 @@ def get_data(filters):
         branch_label = task_ref
         task_status  = ""
         task_zone    = ""
-        if task_ref and task_ref.upper().startswith("TASK"):
+        mreq_group   = items[0].get("group")
+        if mreq_group:
+            task_zone = items[0].get("zone", "")
+            rows.append({**_subtotal_row(
+                "MATERIALS PER {}{}".format(
+                    mreq_group,
+                    " ({})".format(task_zone) if task_zone else ""), None),
+                "row_type": "branch_header"})
+        elif task_ref and task_ref.upper().startswith("TASK"):
             try:
                 td = frappe.get_doc("Task", task_ref)
                 branch_label, _ = _parse_subject(td.subject)
@@ -334,9 +336,10 @@ def get_data(filters):
             except Exception:
                 pass
 
-        rows.append({**_subtotal_row(
-            f"PARTS REPLACEMENT AT {branch_label} BRANCH", None),
-            "row_type": "branch_header"})
+        if not mreq_group:
+            rows.append({**_subtotal_row(
+                f"PARTS REPLACEMENT AT {branch_label} BRANCH", None),
+                "row_type": "branch_header"})
 
         branch_total = 0.0
         for it in items:
@@ -345,7 +348,7 @@ def get_data(filters):
             materials_total += flt(it["amount"])
             rows.append({
                 "sno": sno, "date": it.get("date"), "month": it.get("month", ""),
-                "task": task_ref if task_ref.upper().startswith("TASK") else "",
+                "task": task_ref if (not mreq_group and task_ref.upper().startswith("TASK")) else "",
                 "branch_name": _strip_html(it.get("item_name", it.get("description", ""))),
                 "fault_reported": it.get("expense_type", it.get("item_group", "Materials")),
                 "category": "materials", "unit": it.get("unit", "pcs"),
@@ -510,10 +513,8 @@ def _get_pinv_materials(project, from_date, to_date, zone_filter=None):
         {"dt": "Purchase Invoice Item", "fieldname": "task"}
     )
     extra_fields = ["task"] if has_task_field else []
-    EXCLUDE_GROUPS = {
-        "motor vehicle", "vehicle", "car hire", "transport vehicle",
-        "food", "meals", "accommodation", "stationery", "office supplies",
-    }
+    # MREQ lines with a Zone own their PINV lines (billed in _get_mreq_materials)
+    zoned_mreq_items = _get_zoned_mreq_item_names()
 
     result = []
     for inv in invoices:
@@ -521,9 +522,12 @@ def _get_pinv_materials(project, from_date, to_date, zone_filter=None):
             "Purchase Invoice Item",
             filters={"parent": inv.name},
             fields=["item_name", "item_code", "item_group", "qty", "uom",
-                    "rate", "amount", "description"] + extra_fields,
+                    "rate", "amount", "description", "material_request_item"] + extra_fields,
         )
         for it in items:
+            # Billed under its MREQ instead (avoid double counting)
+            if it.material_request_item and it.material_request_item in zoned_mreq_items:
+                continue
             # Skip non-electrical items (car hire, food, etc.)
             if any(x in (it.item_group or '').lower() for x in EXCLUDE_GROUPS):
                 continue
@@ -554,6 +558,155 @@ def _get_pinv_materials(project, from_date, to_date, zone_filter=None):
                 "source": "Purchase Invoice",
                 "source_doc": "Purchase Invoice:{}".format(inv.name),
             })
+    return result
+
+
+EXCLUDE_GROUPS = {
+    "motor vehicle", "vehicle", "car hire", "transport vehicle",
+    "food", "meals", "accommodation", "stationery", "office supplies",
+}
+
+
+def _zone_like(zone_filter):
+    return "%{}%".format(zone_filter)
+
+
+def _get_zone_tasks(project, from_date, to_date, zone_filter=None):
+    """
+    Tasks for the call-out section. A task is dated by its Expected End Date;
+    when that is blank, its Actual Start Date is used instead (so tasks
+    without an Expected End Date no longer drop out of the report).
+    """
+    base = {"project": project}
+    if zone_filter:
+        base["type"] = ["like", _zone_like(zone_filter)]
+    fields = ["name", "subject", "status", "type", "exp_end_date", "act_start_date"]
+
+    tasks = frappe.get_all(
+        "Task",
+        filters={**base, **_date_filter("exp_end_date", from_date, to_date)},
+        fields=fields,
+    )
+    if from_date or to_date:
+        tasks += frappe.get_all(
+            "Task",
+            filters={**base, "exp_end_date": ["is", "not set"],
+                     **_date_filter("act_start_date", from_date, to_date)},
+            fields=fields,
+        )
+    tasks.sort(key=lambda t: (str(t.exp_end_date or t.act_start_date or ""), t.name))
+    return tasks
+
+
+def _mreq_zone_supported():
+    return frappe.db.has_column("Material Request", "custom_hq_or_zone")
+
+
+def _zoned_mreq_condition():
+    """A Material Request belongs to a zone when its HQ/Zone field is set to
+    something other than HQ."""
+    return ("IFNULL(mr.custom_hq_or_zone, '') != '' "
+            "AND mr.custom_hq_or_zone != 'HQ'")
+
+
+def _get_zoned_mreq_item_names():
+    """Names of every Material Request Item whose MREQ has a Zone."""
+    if not _mreq_zone_supported():
+        return set()
+    return set(frappe.db.sql_list("""
+        SELECT mri.name
+        FROM `tabMaterial Request Item` mri
+        INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+        WHERE mr.docstatus = 1 AND {cond}
+    """.format(cond=_zoned_mreq_condition())))
+
+
+def _get_mreq_materials(project, from_date, to_date, zone_filter=None):
+    """
+    Materials bought through Material Request -> Purchase Order -> Purchase
+    Invoice for MREQs that carry a Zone.
+
+    - The MREQ belongs to the project when its header (custom_project) or any
+      of its lines carries the project.
+    - The MREQ's Zone must match the Zone filter (when one is chosen).
+    - The MREQ's date (transaction_date) must be inside the date range.
+    - The billed cost is the submitted PINV line raised against each MREQ
+      line. MREQ lines with no submitted PINV yet are not billed.
+    """
+    if not _mreq_zone_supported():
+        return []
+
+    conditions = [_zoned_mreq_condition()]
+    params = {"project": project}
+    if zone_filter:
+        conditions.append("mr.custom_hq_or_zone LIKE %(zone)s")
+        params["zone"] = _zone_like(zone_filter)
+    if from_date:
+        conditions.append("mr.transaction_date >= %(from_date)s")
+        params["from_date"] = from_date
+    if to_date:
+        conditions.append("mr.transaction_date <= %(to_date)s")
+        params["to_date"] = to_date
+
+    lines = frappe.db.sql("""
+        SELECT
+            mr.name                AS mreq,
+            mr.transaction_date    AS mreq_date,
+            mr.custom_hq_or_zone   AS zone,
+            pii.name               AS pii_name,
+            pii.item_name          AS item_name,
+            pii.item_code          AS item_code,
+            pii.item_group         AS item_group,
+            pii.description        AS description,
+            pii.qty                AS qty,
+            pii.uom                AS uom,
+            pii.rate               AS rate,
+            pii.amount             AS amount,
+            pii.purchase_order     AS po,
+            pi.name                AS pinv,
+            pi.posting_date        AS posting_date
+        FROM `tabMaterial Request` mr
+        INNER JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
+        INNER JOIN `tabPurchase Invoice Item` pii ON pii.material_request_item = mri.name
+        INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
+        WHERE mr.docstatus = 1
+          AND pi.docstatus = 1
+          AND (
+              mr.custom_project = %(project)s
+              OR mr.name IN (
+                  SELECT DISTINCT parent FROM `tabMaterial Request Item`
+                  WHERE project = %(project)s
+              )
+          )
+          AND {conds}
+        ORDER BY mr.transaction_date, mr.name, mri.idx, pi.posting_date
+    """.format(conds=" AND ".join(conditions)), params, as_dict=True)
+
+    result = []
+    for ln in lines:
+        if any(x in (ln.item_group or "").lower() for x in EXCLUDE_GROUPS):
+            continue
+        if not flt(ln.amount):
+            continue
+        c_rate = get_contract_rate(ln.item_name or ln.item_code or ln.description)
+        source = ["Material Request:{}".format(ln.mreq)]
+        if ln.po:
+            source.append("Purchase Order:{}".format(ln.po))
+        source.append("Purchase Invoice:{}".format(ln.pinv))
+        result.append({
+            "group": ln.mreq,
+            "zone": ln.zone or "",
+            "date": ln.mreq_date, "month": _month_label(ln.mreq_date),
+            "task": "",
+            "item_name": ln.item_name or ln.item_code,
+            "item_group": ln.item_group,
+            "description": _strip_html(ln.description or ln.item_name or ""),
+            "qty": flt(ln.qty) or 1, "unit": ln.uom or "pcs",
+            "rate": c_rate if c_rate else flt(ln.rate),
+            "amount": flt(ln.amount),
+            "source": "Material Request",
+            "source_doc": " | ".join(source),
+        })
     return result
 
 
